@@ -15,6 +15,7 @@ import {
   ListVideo,
   Settings,
   HelpCircle,
+  Server,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -29,7 +30,16 @@ interface SidebarItem {
 }
 
 export function Sidebar() {
-  const { sidebarOpen, activeCategory, setActiveCategory, setCurrentMedia, setSearchQuery, setIsSearching } = useAppStore()
+  const {
+    sidebarOpen,
+    activeCategory,
+    setActiveCategory,
+    setCurrentMedia,
+    setSearchQuery,
+    setIsSearching,
+    jellyfinConnected,
+    setSettingsOpen,
+  } = useAppStore()
 
   const mainItems: SidebarItem[] = [
     { icon: Home, label: 'Home', category: 'ALL', active: activeCategory === 'ALL' },
@@ -43,16 +53,15 @@ export function Sidebar() {
     { icon: Music, label: 'Music', category: 'MUSIC', active: activeCategory === 'MUSIC' },
   ]
 
+  const jellyfinItems: SidebarItem[] = [
+    { icon: Server, label: 'Jellyfin NAS', category: 'JELLYFIN', active: activeCategory === 'JELLYFIN' },
+  ]
+
   const libraryItems: SidebarItem[] = [
     { icon: History, label: 'History', category: undefined, active: false },
     { icon: ThumbsUp, label: 'Liked Videos', category: undefined, active: false },
     { icon: Clock, label: 'Watch Later', category: undefined, active: false },
     { icon: ListVideo, label: 'Playlists', category: undefined, active: false },
-  ]
-
-  const bottomItems: SidebarItem[] = [
-    { icon: Settings, label: 'Settings', category: undefined, active: false },
-    { icon: HelpCircle, label: 'Help', category: undefined, active: false },
   ]
 
   const handleItemClick = (item: SidebarItem) => {
@@ -62,6 +71,10 @@ export function Sidebar() {
       setIsSearching(false)
       setActiveCategory(item.category)
     }
+  }
+
+  const handleSettingsClick = () => {
+    setSettingsOpen(true)
   }
 
   if (!sidebarOpen) {
@@ -93,6 +106,35 @@ export function Sidebar() {
             <span className="text-[10px] leading-tight">{item.label}</span>
           </Button>
         ))}
+        {jellyfinConnected && (
+          <>
+            <Separator className="my-1" />
+            {jellyfinItems.map((item) => (
+              <Button
+                key={item.label}
+                variant="ghost"
+                className={cn(
+                  "flex flex-col items-center gap-1 h-auto py-3 px-2 w-full",
+                  item.active && "bg-accent"
+                )}
+                onClick={() => handleItemClick(item)}
+              >
+                <item.icon className="h-5 w-5" />
+                <span className="text-[10px] leading-tight">NAS</span>
+              </Button>
+            ))}
+          </>
+        )}
+        <div className="mt-auto">
+          <Button
+            variant="ghost"
+            className="flex flex-col items-center gap-1 h-auto py-3 px-2 w-full"
+            onClick={handleSettingsClick}
+          >
+            <Settings className="h-5 w-5" />
+            <span className="text-[10px] leading-tight">Settings</span>
+          </Button>
+        </div>
       </aside>
     )
   }
@@ -140,6 +182,30 @@ export function Sidebar() {
             ))}
           </div>
 
+          {/* Jellyfin Section */}
+          {jellyfinConnected && (
+            <>
+              <Separator className="my-2" />
+              <div className="px-3">
+                <p className="px-3 mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">NAS Server</p>
+                {jellyfinItems.map((item) => (
+                  <Button
+                    key={item.label}
+                    variant="ghost"
+                    className={cn(
+                      "w-full justify-start gap-4 px-3 py-2 h-9 font-normal",
+                      item.active && "bg-accent font-medium"
+                    )}
+                    onClick={() => handleItemClick(item)}
+                  >
+                    <item.icon className="h-5 w-5 shrink-0" />
+                    <span>{item.label}</span>
+                  </Button>
+                ))}
+              </div>
+            </>
+          )}
+
           <Separator className="my-2" />
 
           {/* Library */}
@@ -162,16 +228,21 @@ export function Sidebar() {
 
           {/* Bottom */}
           <div className="px-3">
-            {bottomItems.map((item) => (
-              <Button
-                key={item.label}
-                variant="ghost"
-                className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal"
-              >
-                <item.icon className="h-5 w-5 shrink-0" />
-                <span>{item.label}</span>
-              </Button>
-            ))}
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal"
+              onClick={handleSettingsClick}
+            >
+              <Settings className="h-5 w-5 shrink-0" />
+              <span>Settings</span>
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal"
+            >
+              <HelpCircle className="h-5 w-5 shrink-0" />
+              <span>Help</span>
+            </Button>
           </div>
 
           {/* Footer */}

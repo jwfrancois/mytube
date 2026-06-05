@@ -15,6 +15,7 @@ import {
   MoreHorizontal,
   Eye,
   Calendar,
+  Server,
 } from 'lucide-react'
 import { MediaCard } from '@/components/MediaCard'
 import { useState, useRef, useEffect } from 'react'
@@ -27,7 +28,7 @@ function formatViews(views: number): string {
 }
 
 export function VideoPlayer() {
-  const { currentMedia, setCurrentMedia, mediaItems, sidebarOpen } = useAppStore()
+  const { currentMedia, setCurrentMedia, mediaItems, jellyfinItems, sidebarOpen } = useAppStore()
   const [liked, setLiked] = useState(false)
   const [disliked, setDisliked] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -36,15 +37,25 @@ export function VideoPlayer() {
   if (!currentMedia) return null
 
   const isMusic = currentMedia.type === 'MUSIC'
+  const isJellyfin = currentMedia.isJellyfin
+
+  // Build the video URL
+  let videoSrc = currentMedia.videoUrl
+  if (isJellyfin && currentMedia.jellyfinId) {
+    videoSrc = `/api/jellyfin/stream/${currentMedia.jellyfinId}`
+  }
+
+  // Combine both local and Jellyfin items for related content
+  const allItems = [...mediaItems, ...jellyfinItems]
 
   // Get related items (same type, different id)
-  const related = mediaItems.filter(
+  const related = allItems.filter(
     (m) => m.type === currentMedia.type && m.id !== currentMedia.id
   ).slice(0, 6)
 
   // If not enough of same type, add from other types
   if (related.length < 6) {
-    const others = mediaItems.filter(
+    const others = allItems.filter(
       (m) => m.type !== currentMedia.type && m.id !== currentMedia.id
     ).slice(0, 6 - related.length)
     related.push(...others)
@@ -75,7 +86,7 @@ export function VideoPlayer() {
           <div className="relative aspect-video rounded-xl overflow-hidden bg-black">
             <video
               ref={videoRef}
-              src={currentMedia.videoUrl}
+              src={videoSrc}
               controls
               autoPlay
               className="w-full h-full"
@@ -104,18 +115,39 @@ export function VideoPlayer() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <h1 className="text-xl font-bold leading-tight">{currentMedia.title}</h1>
-                <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
-                  <Eye className="h-4 w-4" />
-                  <span>{formatViews(currentMedia.views)} views</span>
-                  <span>•</span>
-                  <Calendar className="h-3.5 w-3.5" />
-                  <span>{currentMedia.releaseYear}</span>
+                <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground flex-wrap">
+                  {!isJellyfin && (
+                    <>
+                      <Eye className="h-4 w-4" />
+                      <span>{formatViews(currentMedia.views)} views</span>
+                      <span>•</span>
+                    </>
+                  )}
+                  {currentMedia.releaseYear > 0 && (
+                    <>
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>{currentMedia.releaseYear}</span>
+                    </>
+                  )}
                   <Badge variant="secondary" className={cn("text-xs ml-1", typeColor)}>
                     {currentMedia.type === 'TV_SHOW' ? 'TV Show' : currentMedia.type.charAt(0) + currentMedia.type.slice(1).toLowerCase()}
                   </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    {currentMedia.genre}
-                  </Badge>
+                  {currentMedia.genre && (
+                    <Badge variant="outline" className="text-xs">
+                      {currentMedia.genre}
+                    </Badge>
+                  )}
+                  {isJellyfin && (
+                    <Badge variant="outline" className="text-xs gap-1">
+                      <Server className="h-3 w-3" />
+                      Jellyfin
+                    </Badge>
+                  )}
+                  {currentMedia.communityRating && (
+                    <Badge variant="outline" className="text-xs">
+                      ⭐ {currentMedia.communityRating.toFixed(1)}
+                    </Badge>
+                  )}
                 </div>
               </div>
 
@@ -142,10 +174,6 @@ export function VideoPlayer() {
                   <Share2 className="h-4 w-4" />
                   <span className="hidden sm:inline">Share</span>
                 </Button>
-                <Button variant="secondary" size="sm" className="gap-1">
-                  <Download className="h-4 w-4" />
-                  <span className="hidden sm:inline">Download</span>
-                </Button>
                 <Button variant="secondary" size="icon" className="h-9 w-9">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
@@ -158,26 +186,33 @@ export function VideoPlayer() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Avatar className="h-10 w-10">
-                  <AvatarFallback className="bg-muted">
-                    {currentMedia.channel?.charAt(0) || currentMedia.artist?.charAt(0) || 'C'}
+                  <AvatarFallback className={cn("bg-muted", isJellyfin && "bg-emerald-500/10 text-emerald-500")}>
+                    {isJellyfin ? <Server className="h-5 w-5" /> : (currentMedia.channel?.charAt(0) || currentMedia.artist?.charAt(0) || 'C')}
                   </AvatarFallback>
                 </Avatar>
                 <div>
                   <p className="font-medium text-sm">{currentMedia.channel || currentMedia.artist}</p>
-                  <p className="text-xs text-muted-foreground">{currentMedia.artist}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {isJellyfin ? 'Jellyfin NAS' : currentMedia.artist}
+                  </p>
                 </div>
               </div>
-              <Button variant="default" size="sm" className="rounded-full px-6">
-                Subscribe
-              </Button>
+              {isJellyfin && (
+                <Badge variant="outline" className="gap-1">
+                  <Server className="h-3 w-3" />
+                  NAS
+                </Badge>
+              )}
             </div>
 
             <Separator className="my-4" />
 
             {/* Description */}
-            <div className="bg-muted/50 rounded-xl p-4">
-              <p className="text-sm leading-relaxed">{currentMedia.description}</p>
-            </div>
+            {currentMedia.description && (
+              <div className="bg-muted/50 rounded-xl p-4">
+                <p className="text-sm leading-relaxed">{currentMedia.description}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -200,10 +235,21 @@ export function VideoPlayer() {
 function RelatedVideoCard({ item }: { item: any }) {
   const { setCurrentMedia } = useAppStore()
 
+  const handleClick = () => {
+    if (item.isJellyfin && item.jellyfinId) {
+      setCurrentMedia({
+        ...item,
+        videoUrl: `/api/jellyfin/stream/${item.jellyfinId}`,
+      })
+    } else {
+      setCurrentMedia(item)
+    }
+  }
+
   return (
     <div
       className="flex gap-2 cursor-pointer group"
-      onClick={() => setCurrentMedia(item)}
+      onClick={handleClick}
     >
       <div className="relative w-40 aspect-video rounded-lg overflow-hidden bg-muted shrink-0">
         {item.thumbnail ? (
@@ -231,7 +277,7 @@ function RelatedVideoCard({ item }: { item: any }) {
           {item.channel || item.artist}
         </p>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {formatViews(item.views)} views • {item.releaseYear}
+          {item.isJellyfin ? 'Jellyfin' : `${formatViews(item.views)} views`} • {item.releaseYear || ''}
         </p>
       </div>
     </div>

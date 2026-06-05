@@ -20,3 +20,30 @@ Stage Summary:
 - 18 sample media items with AI-generated thumbnails seeded in the database
 - All core features working: video playback, category filtering, search, add media dialog, responsive design
 - Dark theme by default, YouTube-like branding (MyTube)
+
+---
+Task ID: 2
+Agent: Main
+Task: Add Jellyfin NAS server integration to Settings
+
+Work Log:
+- Added JellyfinServer model to Prisma schema (serverUrl, userId, accessToken, username, connected, lastConnected)
+- Created Jellyfin API routes: /api/jellyfin/connect (POST), /api/jellyfin/status (GET), /api/jellyfin/disconnect (DELETE), /api/jellyfin/libraries (GET), /api/jellyfin/items (GET), /api/jellyfin/image/[itemId] (GET), /api/jellyfin/stream/[itemId] (GET)
+- Jellyfin authentication uses /Users/AuthenticateByName endpoint with X-Emby-Authorization header
+- Successfully connected to user's Jellyfin server at https://manitou.dyabavadra.com (username: dyabavadra, server name: desalyn, version: 10.11.6)
+- Server has 7 libraries: Audiobooks, Collections, Movies, Music, Playlists, Podcasts, TV Shows
+- Built SettingsDialog component with connection form, status display, and disconnect button
+- Built JellyfinBrowser component with library browsing, breadcrumb navigation, and folder/file navigation
+- Updated Sidebar to show "Jellyfin NAS" section when connected, and clickable Settings button
+- Updated VideoPlayer to handle Jellyfin media with streaming URLs and NAS branding
+- Updated useAppStore with Jellyfin state (connected, server, items, breadcrumbs, settings dialog)
+- All API routes include abort controllers with timeouts to prevent hanging requests
+- Lint passes cleanly
+
+Stage Summary:
+- Full Jellyfin NAS integration added with Settings dialog for connection configuration
+- User can connect to their Jellyfin server, browse libraries (Movies, TV Shows, Music, etc.)
+- Navigate through folders (Series > Seasons > Episodes) with breadcrumb navigation
+- Play media directly from Jellyfin server via streaming proxy
+- Thumbnails served through /api/jellyfin/image/[itemId] proxy
+- Credentials pre-filled in Settings dialog for user's convenience

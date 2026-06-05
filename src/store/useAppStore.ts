@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC'
+export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'JELLYFIN'
 export type SortType = 'recent' | 'popular'
 
 interface MediaItem {
@@ -17,6 +17,23 @@ interface MediaItem {
   views: number
   channel: string
   createdAt: string
+  isJellyfin?: boolean
+  jellyfinId?: string
+  itemType?: string
+  parentId?: string
+  hasChildren?: boolean
+  communityRating?: number
+  indexNumber?: number
+  parentIndexNumber?: number
+}
+
+interface JellyfinServerInfo {
+  id: string
+  name: string
+  serverUrl: string
+  username: string
+  connected: boolean
+  lastConnected: string | null
 }
 
 interface AppState {
@@ -56,6 +73,22 @@ interface AppState {
   // Add media dialog
   addDialogOpen: boolean
   setAddDialogOpen: (open: boolean) => void
+
+  // Settings dialog
+  settingsOpen: boolean
+  setSettingsOpen: (open: boolean) => void
+
+  // Jellyfin
+  jellyfinConnected: boolean
+  setJellyfinConnected: (connected: boolean) => void
+  jellyfinServer: JellyfinServerInfo | null
+  setJellyfinServer: (server: JellyfinServerInfo | null) => void
+  jellyfinItems: MediaItem[]
+  setJellyfinItems: (items: MediaItem[]) => void
+  jellyfinLoading: boolean
+  setJellyfinLoading: (loading: boolean) => void
+  jellyfinBreadcrumbs: { id: string; title: string }[]
+  setJellyfinBreadcrumbs: (breadcrumbs: { id: string; title: string }[]) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -95,4 +128,20 @@ export const useAppStore = create<AppState>((set) => ({
   // Add media dialog
   addDialogOpen: false,
   setAddDialogOpen: (open) => set({ addDialogOpen: open }),
+
+  // Settings dialog
+  settingsOpen: false,
+  setSettingsOpen: (open) => set({ settingsOpen: open }),
+
+  // Jellyfin
+  jellyfinConnected: false,
+  setJellyfinConnected: (connected) => set({ jellyfinConnected: connected }),
+  jellyfinServer: null,
+  setJellyfinServer: (server) => set({ jellyfinServer: server }),
+  jellyfinItems: [],
+  setJellyfinItems: (items) => set({ jellyfinItems: items }),
+  jellyfinLoading: false,
+  setJellyfinLoading: (loading) => set({ jellyfinLoading: loading }),
+  jellyfinBreadcrumbs: [],
+  setJellyfinBreadcrumbs: (breadcrumbs) => set({ jellyfinBreadcrumbs: breadcrumbs }),
 }))
