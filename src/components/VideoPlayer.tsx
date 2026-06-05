@@ -5,20 +5,19 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Separator } from '@/components/ui/separator'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   ArrowLeft,
   ThumbsUp,
   ThumbsDown,
   Share2,
-  Download,
   MoreHorizontal,
   Eye,
   Calendar,
   Server,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react'
-import { MediaCard } from '@/components/MediaCard'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 
 function formatViews(views: number): string {
@@ -28,11 +27,13 @@ function formatViews(views: number): string {
 }
 
 export function VideoPlayer() {
-  const { currentMedia, setCurrentMedia, mediaItems, jellyfinItems, sidebarOpen } = useAppStore()
+  const { currentMedia, setCurrentMedia, mediaItems, jellyfinItems } = useAppStore()
   const [liked, setLiked] = useState(false)
   const [disliked, setDisliked] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
+  const [videoError, setVideoError] = useState<string | null>(null)
+  const [videoLoading, setVideoLoading] = useState(true)
 
   if (!currentMedia) return null
 
@@ -42,7 +43,8 @@ export function VideoPlayer() {
   // Build the video URL
   let videoSrc = currentMedia.videoUrl
   if (isJellyfin && currentMedia.jellyfinId) {
-    videoSrc = `/api/jellyfin/stream/${currentMedia.jellyfinId}`
+    const mediaTypeParam = isMusic ? '?mediaType=audio' : ''
+    videoSrc = `/api/jellyfin/stream/${currentMedia.jellyfinId}${mediaTypeParam}`
   }
 
   // Combine both local and Jellyfin items for related content
@@ -64,6 +66,56 @@ export function VideoPlayer() {
   const handleBack = () => {
     setCurrentMedia(null)
   }
+
+  const handleVideoError = useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+    const error = video.error
+    if (error) {
+      switch (error.code) {
+        case MediaError.MEDIA_ERR_ABORTED:
+          setVideoError('Playback was aborted.')
+          break
+        case MediaError.MEDIA_ERR_NETWORK:
+          setVideoError('Network error occurred while loading the video. The server may be unreachable or the file may be too large.')
+          break
+        case MediaError.MEDIA_ERR_DECODE:
+          setVideoError('The video format could not be decoded.')
+          break
+        case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+          setVideoError('The video format is not supported by your browser.')
+          break
+        default:
+          setVideoError('An unknown error occurred while playing the video.')
+      }
+    } else {
+      setVideoError('Failed to load the video.')
+    }
+    setVideoLoading(false)
+  }, [])
+
+  const handleCanPlay = useCallback(() => {
+    setVideoLoading(false)
+    setVideoError(null)
+  }, [])
+
+  const handleWaiting = useCallback(() => {
+    setVideoLoading(true)
+  }, [])
+
+  const handlePlaying = useCallback(() => {
+    setVideoLoading(false)
+    setIsVideoPlaying(true)
+  }, [])
+
+  // Reset state when media changes
+  useEffect(() => {
+    setVideoError(null)
+    setVideoLoading(true)
+    setLiked(false)
+    setDisliked(false)
+    setIsVideoPlaying(false)
+  }, [currentMedia?.id])
 
   const typeColor = {
     MOVIE: 'bg-red-500/10 text-red-500',
@@ -89,22 +141,70 @@ export function VideoPlayer() {
               src={videoSrc}
               controls
               autoPlay
+              playsInline
               className="w-full h-full"
               onPlay={() => setIsVideoPlaying(true)}
               onPause={() => setIsVideoPlaying(false)}
+              onError={handleVideoError}
+              onCanPlay={handleCanPlay}
+              onWaiting={handleWaiting}
+              onPlaying={handlePlaying}
+              onLoadedData={handleCanPlay}
             />
+
+            {/* Loading overlay */}
+            {videoLoading && !videoError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none">
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="h-10 w-10 text-white animate-spin" />
+                  <span className="text-white text-sm">Loading video...</span>
+                </div>
+              </div>
+            )}
+
+            {/* Error overlay */}
+            {videoError && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+                <div className="flex flex-col items-center gap-3 max-w-md text-center px-6">
+                  <AlertCircle className="h-12 w-12 text-red-400" />
+                  <h3 className="text-white font-semibold text-lg">Playback Error</h3>
+                  <p className="text-gray-300 text-sm">{videoError}</p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setVideoError(null)
+                      setVideoLoading(true)
+                      if (videoRef.current) {
+                        videoRef.current.load()
+                      }
+                    }}
+                    className="mt-2"
+                  >
+                    Retry
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Music overlay for audio content */}
-            {isMusic && (
+            {isMusic && !videoError && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className={cn(
                   "w-32 h-32 rounded-full flex items-center justify-center transition-transform duration-1000",
                   isVideoPlaying && "animate-spin",
                 )} style={{ animationDuration: '3s' }}>
-                  <img
-                    src={currentMedia.thumbnail}
-                    alt={currentMedia.title}
-                    className="w-full h-full rounded-full object-cover shadow-2xl"
-                  />
+                  {currentMedia.thumbnail ? (
+                    <img
+                      src={currentMedia.thumbnail}
+                      alt={currentMedia.title}
+                      className="w-full h-full rounded-full object-cover shadow-2xl"
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-2xl">
+                      <span className="text-4xl">🎵</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -236,14 +336,7 @@ function RelatedVideoCard({ item }: { item: any }) {
   const { setCurrentMedia } = useAppStore()
 
   const handleClick = () => {
-    if (item.isJellyfin && item.jellyfinId) {
-      setCurrentMedia({
-        ...item,
-        videoUrl: `/api/jellyfin/stream/${item.jellyfinId}`,
-      })
-    } else {
-      setCurrentMedia(item)
-    }
+    setCurrentMedia(item)
   }
 
   return (
@@ -257,6 +350,7 @@ function RelatedVideoCard({ item }: { item: any }) {
             src={item.thumbnail}
             alt={item.title}
             className="w-full h-full object-cover"
+            loading="lazy"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted-foreground/10">

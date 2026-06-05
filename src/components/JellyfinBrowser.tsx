@@ -59,11 +59,11 @@ export function JellyfinBrowser() {
       setJellyfinBreadcrumbs([...jellyfinBreadcrumbs, { id: item.id, title: item.title }])
       fetchItems(item.id)
     } else {
-      // It's playable content — set it as current media with streaming URL
+      // It's playable content — set it as current media
+      // The VideoPlayer will construct the proper stream URL based on isJellyfin and jellyfinId
       useAppStore.setState({
         currentMedia: {
           ...item,
-          videoUrl: `/api/jellyfin/stream/${item.jellyfinId || item.id}`,
         },
         isPlaying: true,
       })
