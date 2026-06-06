@@ -923,9 +923,10 @@ export function VideoPlayer() {
   useEffect(() => {
     if (!currentMedia) return
 
-    // Skip browsable containers (podcast shows, etc.) — they show an episode list instead
+    // Skip browsable containers (podcast shows, series, etc.) — they show an episode list instead
+    // BUT do NOT skip MusicAlbum here — when a track from a MusicAlbum is played (not the album itself),
+    // it will have itemType='Audio' and parentId set, so it won't be caught by this check.
     const isBrowsable = currentMedia.isJellyfin && currentMedia.hasChildren && (
-      currentMedia.itemType === 'MusicAlbum' ||
       currentMedia.itemType === 'MusicArtist' ||
       currentMedia.itemType === 'Series' ||
       currentMedia.itemType === 'BoxSet' ||
@@ -941,10 +942,46 @@ export function VideoPlayer() {
     if (queuePopulatedRef.current === currentMedia.id) return
     queuePopulatedRef.current = currentMedia.id
 
-    // If the item has children (album), fetch its children and populate queue
     const populateQueue = async () => {
-      if (currentMedia.isJellyfin && currentMedia.hasChildren && currentMedia.jellyfinId) {
-        // It's an album — fetch tracks
+      // If the track has a parentId (it's part of an album), fetch sibling tracks
+      if (currentMedia.isJellyfin && currentMedia.parentId) {
+        // Check if the queue was already populated by the track list click handler
+        const currentQueue = useAppStore.getState().audioQueue
+        const alreadyInQueue = currentQueue.some(item =>
+          item.jellyfinId === currentMedia.jellyfinId || item.id === currentMedia.id
+        )
+        const queueHasSameParent = currentQueue.some(item => item.parentId === currentMedia.parentId)
+        if (alreadyInQueue && queueHasSameParent && currentQueue.length > 1) {
+          // Queue already correctly populated by MediaDetail track list handler
+          // Just set the index
+          const currentIdx = currentQueue.findIndex((t: MediaItem) =>
+            t.jellyfinId === currentMedia.jellyfinId || t.id === currentMedia.id
+          )
+          if (currentIdx >= 0) {
+            useAppStore.setState({ audioQueueIndex: currentIdx })
+          }
+          return
+        }
+
+        try {
+          const res = await fetch(`/api/jellyfin/items?parentId=${currentMedia.parentId}`)
+          const data = await res.json()
+          const tracks = (data.items || []).filter((item: MediaItem) => isAudioType(item.type))
+          if (tracks.length > 0) {
+            setAudioQueue(tracks)
+            // Find the current item in the tracks
+            const currentIdx = tracks.findIndex((t: MediaItem) => t.id === currentMedia.id || t.jellyfinId === currentMedia.jellyfinId)
+            if (currentIdx >= 0) {
+              useAppStore.setState({ audioQueueIndex: currentIdx })
+            }
+          }
+        } catch (err) {
+          console.error('Failed to fetch sibling tracks:', err)
+          // Fallback: just add the current item
+          setAudioQueue([currentMedia])
+        }
+      } else if (currentMedia.isJellyfin && currentMedia.hasChildren && currentMedia.jellyfinId) {
+        // It's an album container — fetch tracks
         try {
           const res = await fetch(`/api/jellyfin/items?parentId=${currentMedia.jellyfinId}`)
           const data = await res.json()

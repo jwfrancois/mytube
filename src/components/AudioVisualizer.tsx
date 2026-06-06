@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { cn } from '@/lib/utils'
+import { getSharedAudioContext, resumeAudioContext, isWebAudioSupported } from '@/lib/audioContext'
 
 interface AudioVisualizerProps {
   audioElement: HTMLAudioElement | HTMLVideoElement | null
@@ -18,39 +19,6 @@ const colorSchemes = {
   rose: { from: '#f43f5e', to: '#a855f7', mid: '#d946ef', bg: 'rgba(244, 63, 94, 0.1)' },
 }
 
-// We store the audio context + analyser per audio element in a WeakMap
-// so that createMediaElementSource is called only once per element.
-const audioContextMap = new WeakMap<
-  HTMLAudioElement | HTMLVideoElement,
-  { ctx: AudioContext; analyser: AnalyserNode; source: MediaElementAudioSourceNode }
->()
-
-function getOrCreateAudioContext(el: HTMLAudioElement | HTMLVideoElement) {
-  if (audioContextMap.has(el)) return audioContextMap.get(el)!
-
-  const ctx = new AudioContext()
-  const analyser = ctx.createAnalyser()
-  analyser.fftSize = 256
-  analyser.smoothingTimeConstant = 0.8
-
-  const source = ctx.createMediaElementSource(el)
-  source.connect(analyser)
-  analyser.connect(ctx.destination)
-
-  const entry = { ctx, analyser, source }
-  audioContextMap.set(el, entry)
-  return entry
-}
-
-function checkWebAudioSupported(): boolean {
-  try {
-    // Just check if the APIs exist, don't create a context yet
-    return typeof AudioContext !== 'undefined' || typeof (window as any).webkitAudioContext !== 'undefined'
-  } catch {
-    return false
-  }
-}
-
 export function AudioVisualizer({
   audioElement,
   isPlaying,
@@ -63,16 +31,16 @@ export function AudioVisualizer({
   const analyserRef = useRef<AnalyserNode | null>(null)
   const [visualizerType, setVisualizerType] = useState<'bars' | 'wave' | 'circle'>('bars')
   // Check WebAudio support synchronously on mount
-  const [webAudioSupported] = useState(() => checkWebAudioSupported())
+  const [webAudioSupported] = useState(() => isWebAudioSupported())
 
   const color = colorSchemes[colorScheme]
 
-  // Initialize Web Audio API — one source per element
+  // Initialize Web Audio API — uses the shared audio context
   useEffect(() => {
     if (!audioElement || !webAudioSupported) return
 
     try {
-      const { analyser } = getOrCreateAudioContext(audioElement)
+      const { analyser } = getSharedAudioContext(audioElement)
       analyserRef.current = analyser
     } catch {
       // Silently fail - analyserRef will remain null
@@ -83,10 +51,7 @@ export function AudioVisualizer({
   useEffect(() => {
     if (!audioElement) return
     if (isPlaying) {
-      const entry = audioContextMap.get(audioElement)
-      if (entry && entry.ctx.state === 'suspended') {
-        entry.ctx.resume()
-      }
+      resumeAudioContext(audioElement)
     }
   }, [isPlaying, audioElement])
 

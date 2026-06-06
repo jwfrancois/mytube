@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { getSharedAudioContext, resumeAudioContext } from '@/lib/audioContext'
 
 // EQ presets: each defines gain values for frequency bands
 const EQ_PRESETS: Record<string, { label: string; icon: string; bands: number[] }> = {
@@ -23,7 +24,6 @@ const EQ_PRESETS: Record<string, { label: string; icon: string; bands: number[] 
   'night-mode': { label: 'Night Mode', icon: '🌙', bands: [-3, -1, 2, -1, -3] },
 }
 
-const EQ_FREQUENCIES = [60, 230, 910, 4000, 14000]
 const EQ_LABELS = ['60', '230', '910', '4k', '14k']
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
@@ -43,9 +43,7 @@ export function SoundSettings({ audioElement, compact = false }: SoundSettingsPr
     setEqualizerPreset,
   } = useAppStore()
 
-  const filtersRef = useRef<BiquadFilterNode[]>([])
-  const ctxRef = useRef<AudioContext | null>(null)
-  // Store a local reference to the element to avoid modifying the prop
+  // Keep a ref to the current audio element so the EQ effect can reference it
   const elRef = useRef<HTMLAudioElement | HTMLVideoElement | null>(null)
 
   // Keep the local ref in sync with the prop
@@ -53,7 +51,7 @@ export function SoundSettings({ audioElement, compact = false }: SoundSettingsPr
     elRef.current = audioElement
   }, [audioElement])
 
-  // Apply EQ filters using Web Audio API
+  // Apply EQ bands using the shared audio context
   useEffect(() => {
     const el = elRef.current
     if (!el) return
@@ -61,55 +59,13 @@ export function SoundSettings({ audioElement, compact = false }: SoundSettingsPr
     const bands = EQ_PRESETS[equalizerPreset]?.bands || EQ_PRESETS.flat.bands
 
     try {
-      // Create AudioContext and filters if not already created
-      if (!ctxRef.current) {
-        const ctx = new AudioContext()
-        ctxRef.current = ctx
+      const { setEqBands } = getSharedAudioContext(el)
+      setEqBands(bands)
 
-        // Create 5 band-pass filters
-        const filters = EQ_FREQUENCIES.map((freq, i) => {
-          const filter = ctx.createBiquadFilter()
-          if (i === 0) {
-            filter.type = 'lowshelf'
-          } else if (i === EQ_FREQUENCIES.length - 1) {
-            filter.type = 'highshelf'
-          } else {
-            filter.type = 'peaking'
-          }
-          filter.frequency.value = freq
-          filter.Q.value = 1
-          filter.gain.value = bands[i]
-          return filter
-        })
-
-        filtersRef.current = filters
-
-        // Connect the chain: source -> filter0 -> filter1 -> ... -> destination
-        const source = ctx.createMediaElementSource(el)
-        let lastNode: AudioNode = source
-        filters.forEach((filter) => {
-          lastNode.connect(filter)
-          lastNode = filter
-        })
-        lastNode.connect(ctx.destination)
-      } else {
-        // Update existing filter gains
-        filtersRef.current.forEach((filter, i) => {
-          filter.gain.value = bands[i]
-        })
-      }
-
-      if (ctxRef.current.state === 'suspended') {
-        ctxRef.current.resume()
-      }
+      // Resume context if suspended (e.g., after user interaction)
+      resumeAudioContext(el)
     } catch {
-      // If createMediaElementSource fails (already connected to another context),
-      // we can still update gains if filters exist
-      if (filtersRef.current.length > 0) {
-        filtersRef.current.forEach((filter, i) => {
-          filter.gain.value = bands[i]
-        })
-      }
+      // Shared context creation failed — EQ won't work but audio still plays
     }
   }, [equalizerPreset])
 
@@ -282,11 +238,10 @@ export function SoundSettings({ audioElement, compact = false }: SoundSettingsPr
       <div>
         <div className="text-xs text-muted-foreground mb-2">Frequency Bands</div>
         <div className="flex items-end gap-2 h-24">
-          {EQ_FREQUENCIES.map((freq, i) => {
-            const gain = EQ_PRESETS[equalizerPreset]?.bands[i] || 0
+          {EQ_PRESETS[equalizerPreset]?.bands.map((gain, i) => {
             const heightPercent = 50 + (gain / 6) * 50 // Map -6..6 to 0..100
             return (
-              <div key={freq} className="flex-1 flex flex-col items-center gap-1">
+              <div key={i} className="flex-1 flex flex-col items-center gap-1">
                 <span className="text-[9px] text-muted-foreground">
                   {gain > 0 ? '+' : ''}{gain}
                 </span>

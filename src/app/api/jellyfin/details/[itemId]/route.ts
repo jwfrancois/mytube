@@ -280,7 +280,7 @@ export async function GET(
       try {
         const episodeOffset = parseInt(searchParams.get('episodeOffset') || '0')
         const episodeLimit = Math.min(parseInt(searchParams.get('episodeLimit') || '50'), 200)
-        const childrenUrl = `${server.serverUrl}/Items?ParentId=${itemId}&UserId=${server.userId}&IncludeItemTypes=Audio&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,RunTimeTicks,ProductionYear,MediaSources,PremiereDate&SortBy=DateCreated&SortOrder=Descending&Limit=${episodeLimit}&StartIndex=${episodeOffset}`
+        const childrenUrl = `${server.serverUrl}/Items?ParentId=${itemId}&UserId=${server.userId}&IncludeItemTypes=Audio&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,RunTimeTicks,ProductionYear,MediaSources,PremiereDate,IndexNumber,Artists,AlbumArtist&SortBy=SortName&SortOrder=Ascending&Limit=${episodeLimit}&StartIndex=${episodeOffset}`
         const childrenController = new AbortController()
         const childrenTimeout = setTimeout(() => childrenController.abort(), 10000)
 
@@ -311,6 +311,8 @@ export async function GET(
               premiereDate: ep.PremiereDate || '',
               productionYear: ep.ProductionYear || null,
               communityRating: ep.CommunityRating || null,
+              indexNumber: ep.IndexNumber || null,
+              artists: ep.Artists || (ep.AlbumArtist ? [ep.AlbumArtist] : []),
             }
           })
           result.podcastTotalCount = childrenData.TotalRecordCount || 0

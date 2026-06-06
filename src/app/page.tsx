@@ -11,6 +11,8 @@ import { SearchResults } from '@/components/SearchResults'
 import { AddMediaDialog } from '@/components/AddMediaDialog'
 import { SettingsDialog } from '@/components/SettingsDialog'
 import { JellyfinBrowser } from '@/components/JellyfinBrowser'
+import { AIConcierge } from '@/components/AIConcierge'
+import { AIRadioStations } from '@/components/AIRadioStations'
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
 import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers } from 'lucide-react'
@@ -309,6 +311,10 @@ export default function Home() {
           <div className="relative w-full h-[50vh] min-h-[360px] max-h-[600px] mb-8">
             <div className="w-full h-full bg-muted/20 animate-pulse rounded-none" />
           </div>
+          {/* AI Concierge skeleton */}
+          <div className="px-6 mb-8">
+            <div className="h-48 w-full bg-muted/20 animate-pulse rounded-2xl" />
+          </div>
           {/* Section skeletons */}
           {[1, 2, 3].map((s) => (
             <div key={s} className="mb-8 px-6">
@@ -333,8 +339,12 @@ export default function Home() {
       )
     }
 
-    // For ALL category, use section-based layout
+    // For ALL category, use section-based layout with AI components
     if (activeCategory === 'ALL' && sections.length > 0) {
+      // Find the index after "Trending Now" section for AI Radio placement
+      const trendingIndex = sections.findIndex(s => s.id === 'popular')
+      const radioInsertIndex = trendingIndex >= 0 ? trendingIndex + 1 : 2
+
       return (
         <MediaGrid
           items={mediaItems}
@@ -344,6 +354,9 @@ export default function Home() {
           onRemoveWatchLater={handleRemoveWatchLater}
           isInWatchLater={handleIsInWatchLater}
           onPlay={handlePlay}
+          topSlot={<AIConcierge onPlay={handlePlay} />}
+          middleSlot={<AIRadioStations onPlay={handlePlay} />}
+          middleSlotAfterSectionId={radioInsertIndex > 0 ? sections[radioInsertIndex - 1]?.id : undefined}
         />
       )
     }

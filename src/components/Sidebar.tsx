@@ -19,6 +19,7 @@ import {
   HelpCircle,
   Server,
   FolderOpen,
+  Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -103,6 +104,7 @@ export function Sidebar() {
 
   const mainItems: SidebarItem[] = [
     { icon: Home, label: 'Home', category: 'ALL', active: activeCategory === 'ALL' },
+    { icon: Sparkles, label: 'AI Concierge', category: 'ALL', active: false },
     { icon: Flame, label: 'Trending', category: 'ALL', active: false },
     { icon: Compass, label: 'Explore', category: 'ALL', active: false },
   ]
@@ -133,6 +135,16 @@ export function Sidebar() {
       setSearchQuery('')
       setIsSearching(false)
       setActiveCategory(item.category)
+
+      // If AI Concierge, scroll to the concierge panel
+      if (item.label === 'AI Concierge') {
+        setTimeout(() => {
+          const el = document.getElementById('ai-concierge')
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        }, 100)
+      }
     }
   }
 

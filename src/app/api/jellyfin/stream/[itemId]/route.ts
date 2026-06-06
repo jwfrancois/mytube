@@ -130,16 +130,38 @@ export async function GET(
         })
       }
 
+      // Strategy 0: Try direct download endpoint (no transcoding)
+      try {
+        const downloadUrl = `${server.serverUrl}/Items/${itemId}/Download?api_key=${server.accessToken}`
+        const downloadController = new AbortController()
+        const downloadTimeout = setTimeout(() => downloadController.abort(), 30000)
+
+        const downloadRes = await fetch(downloadUrl, {
+          headers: { ...headers, 'X-Emby-Token': server.accessToken },
+          signal: downloadController.signal,
+        })
+
+        clearTimeout(downloadTimeout)
+
+        if (downloadRes.ok || downloadRes.status === 206) {
+          return proxyAudioResponse(downloadRes)
+        }
+
+        console.warn(`Jellyfin download endpoint returned ${downloadRes.status} for item ${itemId}, trying universal endpoint...`)
+      } catch (err) {
+        console.warn('Jellyfin download endpoint error, trying universal endpoint:', err)
+      }
+
       // Strategy 1: Try the universal audio endpoint
       const audioParams = new URLSearchParams({
         UserId: server.userId,
         DeviceId: deviceId,
         api_key: server.accessToken,
-        Container: 'mp3,aac,ogg,wav,flac,alac,m4a,wma',
+        Container: 'mp3,aac,ogg,wav,flac,alac,m4a,wma,flac',
         TranscodingContainer: 'mp3',
         TranscodingProtocol: 'https',
         AudioCodec: 'mp3',
-        MaxStreamingBitrate: '320000',
+        MaxStreamingBitrate: '3200000',
         StartTimeTicks: '0',
       })
 
@@ -168,7 +190,7 @@ export async function GET(
 
       // Strategy 2: Use PlaybackInfo API to get a stream URL (like video mode does)
       try {
-        const playbackInfoUrl = `${server.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${server.userId}&MaxStreamingBitrate=320000&StartTimeTicks=0&AutoOpenLiveStream=true&DeviceId=${deviceId}`
+        const playbackInfoUrl = `${server.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${server.userId}&MaxStreamingBitrate=3200000&StartTimeTicks=0&AutoOpenLiveStream=true&DeviceId=${deviceId}`
         const playbackController = new AbortController()
         const playbackTimeout = setTimeout(() => playbackController.abort(), 10000)
 
@@ -180,14 +202,15 @@ export async function GET(
           },
           body: JSON.stringify({
             DeviceProfile: {
-              MaxStreamingBitrate: 320000,
-              MaxStaticBitrate: 320000,
-              MusicStreamingTranscodingBitrate: 320000,
+              MaxStreamingBitrate: 3200000,
+              MaxStaticBitrate: 3200000,
+              MusicStreamingTranscodingBitrate: 3200000,
               DirectPlayProfiles: [
-                { Container: 'mp3,aac,ogg,wav,flac,alac,m4a,wma', AudioCodec: 'mp3,aac,opus,vorbis,flac,alac', Type: 'Audio' },
+                { Container: 'mp3,aac,ogg,wav,flac,alac,m4a,wma,flac', AudioCodec: 'mp3,aac,opus,vorbis,flac,alac', Type: 'Audio' },
               ],
               TranscodingProfiles: [
                 { Container: 'mp3', AudioCodec: 'mp3', Type: 'Audio', Context: 'Streaming', Protocol: 'https' },
+                { Container: 'aac', AudioCodec: 'aac', Type: 'Audio', Context: 'Streaming', Protocol: 'https' },
               ],
               CodecProfiles: [],
               SubtitleProfiles: [],

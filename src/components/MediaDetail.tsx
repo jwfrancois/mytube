@@ -154,6 +154,8 @@ interface PodcastEpisodeInfo {
   premiereDate: string
   productionYear: number | null
   communityRating: number | null
+  indexNumber?: number
+  artists?: string[]
 }
 
 interface JellyfinDetailData {
@@ -570,7 +572,7 @@ interface MediaDetailProps {
 }
 
 export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailProps) {
-  const { setCurrentMedia } = useAppStore()
+  const { setCurrentMedia, setAudioQueue, setAudioQueueIndex, setIsPlaying, setAudioTrack } = useAppStore()
 
   // Jellyfin details
   const [jellyfinDetails, setJellyfinDetails] = useState<JellyfinDetailData | null>(null)
@@ -590,6 +592,17 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
   const isMusic = type === 'MUSIC'
   const isCollection = type === 'COLLECTION' || itemType === 'BoxSet'
   const isPodcast = type === 'PODCAST'
+
+  // Track currently playing audio for highlighting in track list
+  const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null)
+  useEffect(() => {
+    const unsub = useAppStore.subscribe(
+      (s) => s.audioTrack?.jellyfinId,
+      (id) => setCurrentlyPlayingId(id ?? null)
+    )
+    setCurrentlyPlayingId(useAppStore.getState().audioTrack?.jellyfinId ?? null)
+    return unsub
+  }, [])
 
   // Reset selectedSeasonId when the media item changes
   useEffect(() => {
@@ -807,6 +820,53 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
       collectionType: 'boxsets',
     })
   }, [setCurrentMedia])
+
+  // Handle music track play from album
+  const handlePlayMusicTrack = useCallback((episode: PodcastEpisodeInfo, trackIndex: number) => {
+    const albumTracks = jellyfinDetails?.podcastEpisodes || []
+
+    // Build MediaItem objects for all tracks in the album
+    const queueItems: import('@/store/useAppStore').MediaItem[] = albumTracks.map((ep, i) => ({
+      id: ep.id,
+      title: ep.name,
+      description: ep.overview || '',
+      type: 'MUSIC' as const,
+      genre: '',
+      thumbnail: ep.thumbnail || (jellyfinDetails?.imageTags?.Primary ? `/api/jellyfin/image/${jellyfinId}?tag=${jellyfinDetails.imageTags.Primary}` : ''),
+      videoUrl: '',
+      duration: ep.duration,
+      releaseYear: ep.productionYear || 0,
+      artist: ep.artists?.join(', ') || jellyfinDetails?.studios?.join(', ') || '',
+      views: 0,
+      channel: 'Jellyfin',
+      createdAt: '',
+      isJellyfin: true,
+      jellyfinId: ep.id,
+      mediaSourceId: ep.mediaSourceId,
+      itemType: 'Audio',
+      parentId: jellyfinId,
+      indexNumber: ep.indexNumber ?? (i + 1),
+    }))
+
+    // Set the queue with all album tracks
+    setAudioQueue(queueItems)
+    setAudioQueueIndex(trackIndex)
+
+    // Set current media to the clicked track
+    const clickedTrack = queueItems[trackIndex]
+    if (clickedTrack) {
+      setCurrentMedia(clickedTrack)
+      setAudioTrack(clickedTrack)
+      setIsPlaying(true)
+    }
+  }, [jellyfinDetails, jellyfinId, setCurrentMedia, setAudioQueue, setAudioQueueIndex, setIsPlaying, setAudioTrack])
+
+  // Handle "Play All" for music album
+  const handlePlayAllTracks = useCallback(() => {
+    const albumTracks = jellyfinDetails?.podcastEpisodes || []
+    if (albumTracks.length === 0) return
+    handlePlayMusicTrack(albumTracks[0], 0)
+  }, [jellyfinDetails?.podcastEpisodes, handlePlayMusicTrack])
 
   // Handle podcast episode play
   const handlePlayPodcastEpisode = useCallback((episode: PodcastEpisodeInfo) => {
@@ -1427,6 +1487,101 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
               </>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ─── Music Album: Track List ──────────────────────────────────────── */}
+      {isMusic && jellyfinDetails?.podcastEpisodes && jellyfinDetails.podcastEpisodes.length > 0 && (
+        <div>
+          <Separator className="mb-6 bg-white/5" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Music className="h-4 w-4 text-mythic" />
+              <h3 className="text-sm font-semibold">Tracks</h3>
+              <Badge variant="secondary" className="text-xs ml-2 bg-mythic/10 text-mythic-foreground">
+                {jellyfinDetails.podcastEpisodes.length} track{jellyfinDetails.podcastEpisodes.length > 1 ? 's' : ''}
+              </Badge>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={handlePlayAllTracks}
+            >
+              <Play className="h-3.5 w-3.5 fill-current" />
+              Play All
+            </Button>
+          </div>
+
+          {/* Loading skeleton for track list */}
+          {jellyfinLoading && (
+            <div className="space-y-2">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 p-2">
+                  <Skeleton className="w-6 h-4" />
+                  <Skeleton className="flex-1 h-4" />
+                  <Skeleton className="w-12 h-4" />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Track list */}
+          {!jellyfinLoading && (
+            <div className="bg-white/5 rounded-xl border border-white/5 overflow-hidden">
+              {jellyfinDetails.podcastEpisodes.map((episode, index) => {
+                const trackNum = episode.indexNumber ?? (index + 1)
+                const isCurrentlyPlaying = currentlyPlayingId === episode.id
+                return (
+                  <div
+                    key={`track-${episode.id}-${index}`}
+                    className={cn(
+                      'flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-all duration-150 group/track',
+                      'hover:bg-white/5 border-b border-white/5 last:border-b-0',
+                      isCurrentlyPlaying && 'bg-mythic/10 border-l-2 border-l-mythic'
+                    )}
+                    onClick={() => handlePlayMusicTrack(episode, index)}
+                  >
+                    {/* Track number / Play icon on hover */}
+                    <div className="w-8 shrink-0 flex items-center justify-center">
+                      <span className={cn(
+                        'text-xs tabular-nums group-hover/track:hidden',
+                        isCurrentlyPlaying ? 'text-mythic font-bold' : 'text-muted-foreground'
+                      )}>
+                        {trackNum}
+                      </span>
+                      <Play className={cn(
+                        'h-3.5 w-3.5 hidden group-hover/track:block fill-current',
+                        isCurrentlyPlaying ? 'text-mythic' : 'text-foreground'
+                      )} />
+                    </div>
+
+                    {/* Track title + artist */}
+                    <div className="flex-1 min-w-0">
+                      <p className={cn(
+                        'text-sm truncate leading-tight',
+                        isCurrentlyPlaying ? 'text-mythic font-medium' : 'group-hover/track:text-mythic transition-colors'
+                      )}>
+                        {episode.name}
+                      </p>
+                      {(episode.artists && episode.artists.length > 0) && (
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {episode.artists.join(', ')}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Duration */}
+                    {episode.duration && (
+                      <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                        {episode.duration}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 

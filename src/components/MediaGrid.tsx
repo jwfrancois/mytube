@@ -24,6 +24,9 @@ interface MediaGridProps {
   onRemoveWatchLater?: (id: string) => void
   isInWatchLater?: (id: string) => boolean
   onPlay?: (item: any) => void
+  topSlot?: React.ReactNode
+  middleSlot?: React.ReactNode
+  middleSlotAfterSectionId?: string
 }
 
 function HorizontalShelf({
@@ -159,7 +162,7 @@ function HorizontalShelf({
   )
 }
 
-export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWatchLater, isInWatchLater, onPlay }: MediaGridProps) {
+export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWatchLater, isInWatchLater, onPlay, topSlot, middleSlot, middleSlotAfterSectionId }: MediaGridProps) {
   const { activeCategory, sortBy, setSortBy, isLoading } = useAppStore()
 
   const categoryTitle: Record<MediaType, string> = {
@@ -259,8 +262,11 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
           </div>
         )}
 
+        {/* Top Slot — AI Concierge etc. */}
+        {topSlot && activeCategory === 'ALL' && topSlot}
+
         {/* Horizontal shelves */}
-        {sections.map((section) => (
+        {sections.map((section, idx) => (
           <div key={section.id}>
             <HorizontalShelf
               section={section}
@@ -269,6 +275,8 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
               isInWatchLater={isInWatchLater}
               onPlay={onPlay}
             />
+            {/* Middle Slot — AI Radio etc. */}
+            {middleSlot && activeCategory === 'ALL' && middleSlotAfterSectionId === section.id && middleSlot}
           </div>
         ))}
       </div>
