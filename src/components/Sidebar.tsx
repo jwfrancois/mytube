@@ -7,6 +7,8 @@ import {
   Film,
   Tv,
   Music,
+  Mic,
+  Headphones,
   Clock,
   ThumbsUp,
   Flame,
@@ -51,6 +53,8 @@ export function Sidebar() {
     { icon: Film, label: 'Movies', category: 'MOVIE', active: activeCategory === 'MOVIE' },
     { icon: Tv, label: 'TV Shows', category: 'TV_SHOW', active: activeCategory === 'TV_SHOW' },
     { icon: Music, label: 'Music', category: 'MUSIC', active: activeCategory === 'MUSIC' },
+    { icon: Mic, label: 'Podcasts', category: 'PODCAST', active: activeCategory === 'PODCAST' },
+    { icon: Headphones, label: 'Audiobooks', category: 'AUDIOBOOK', active: activeCategory === 'AUDIOBOOK' },
   ]
 
   const jellyfinItems: SidebarItem[] = [

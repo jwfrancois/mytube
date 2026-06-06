@@ -12,13 +12,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const parentId = searchParams.get('parentId')
     const searchTerm = searchParams.get('search')
+    const parentCollectionType = searchParams.get('collectionType') || ''
 
     let url: string
 
     if (searchTerm) {
-      url = `${server.serverUrl}/Items?UserId=${server.userId}&SearchTerm=${encodeURIComponent(searchTerm)}&IncludeItemTypes=Movie,Series,Audio,Episode&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=100`
+      url = `${server.serverUrl}/Items?UserId=${server.userId}&SearchTerm=${encodeURIComponent(searchTerm)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,LiveTvChannel,LiveTvProgram&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People&SortBy=SortName&SortOrder=Ascending&Limit=100`
     } else if (parentId) {
-      url = `${server.serverUrl}/Items?ParentId=${parentId}&UserId=${server.userId}&Recursive=false&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=200`
+      url = `${server.serverUrl}/Items?ParentId=${parentId}&UserId=${server.userId}&Recursive=false&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People&SortBy=SortName&SortOrder=Ascending&Limit=200`
     } else {
       return NextResponse.json({ items: [] })
     }
@@ -44,9 +45,22 @@ export async function GET(request: NextRequest) {
     const items = (data.Items || []).map((item: any) => {
       let type = 'MOVIE'
       if (item.Type === 'Series' || item.Type === 'Season' || item.Type === 'Episode') {
-        type = 'TV_SHOW'
+        // In a podcast library, Series are podcast shows
+        type = parentCollectionType === 'podcasts' ? 'PODCAST' : 'TV_SHOW'
+      } else if (item.Type === 'AudioBook') {
+        type = 'AUDIOBOOK'
+      } else if (item.Type === 'LiveTvChannel' || item.Type === 'LiveTvProgram') {
+        type = 'PODCAST'
       } else if (item.Type === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'MusicArtist') {
-        type = 'MUSIC'
+        // In a podcast library, Audio items are podcast episodes
+        // In a books library, Audio items are audiobooks
+        if (parentCollectionType === 'podcasts') {
+          type = 'PODCAST'
+        } else if (parentCollectionType === 'books') {
+          type = 'AUDIOBOOK'
+        } else {
+          type = 'MUSIC'
+        }
       }
 
       let duration = ''
@@ -83,6 +97,7 @@ export async function GET(request: NextRequest) {
         communityRating: item.CommunityRating,
         indexNumber: item.IndexNumber,
         parentIndexNumber: item.ParentIndexNumber,
+        collectionType: item.CollectionType || parentCollectionType,
       }
     })
 

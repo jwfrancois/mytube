@@ -35,10 +35,22 @@ export function JellyfinBrowser() {
     }
   }, [setJellyfinItems, setJellyfinLoading])
 
-  const fetchItems = useCallback(async (parentId: string) => {
+  // Track the current library's collection type for proper type mapping
+  const currentCollectionTypeRef = useCallback(() => {
+    // Check the current jellyfin items for any that have a collectionType
+    // (the top-level library item will have it)
+    for (const item of jellyfinItems) {
+      if (item.collectionType) return item.collectionType
+    }
+    return ''
+  }, [jellyfinItems])
+
+  const fetchItems = useCallback(async (parentId: string, collectionType?: string) => {
     setJellyfinLoading(true)
     try {
-      const res = await fetch(`/api/jellyfin/items?parentId=${parentId}`)
+      const params = new URLSearchParams({ parentId })
+      if (collectionType) params.set('collectionType', collectionType)
+      const res = await fetch(`/api/jellyfin/items?${params}`)
       const data = await res.json()
       setJellyfinItems(data.items || [])
     } catch (err) {
@@ -56,14 +68,23 @@ export function JellyfinBrowser() {
 
   const handleNavigate = (item: any) => {
     if (item.hasChildren) {
-      setJellyfinBreadcrumbs([...jellyfinBreadcrumbs, { id: item.id, title: item.title }])
-      fetchItems(item.id)
+      // Inherit collectionType: use the item's own, or fall back to the current library's type
+      const ct = item.collectionType || currentCollectionTypeRef()
+      setJellyfinBreadcrumbs([...jellyfinBreadcrumbs, { id: item.id, title: item.title, collectionType: ct }])
+      fetchItems(item.id, ct)
     } else {
       // It's playable content — set it as current media
-      // The VideoPlayer will construct the proper stream URL based on isJellyfin and jellyfinId
+      // Inherit the collection type so the player knows if it's a podcast/audiobook
+      const ct = currentCollectionTypeRef()
+      let itemType = item.type
+      if (ct === 'podcasts' && item.type === 'MUSIC') itemType = 'PODCAST'
+      if (ct === 'books' && item.type === 'MUSIC') itemType = 'AUDIOBOOK'
+      
       useAppStore.setState({
         currentMedia: {
           ...item,
+          type: itemType,
+          collectionType: ct,
         },
         isPlaying: true,
       })
@@ -74,7 +95,7 @@ export function JellyfinBrowser() {
     const newBreadcrumbs = jellyfinBreadcrumbs.slice(0, index + 1)
     setJellyfinBreadcrumbs(newBreadcrumbs)
     const target = newBreadcrumbs[index]
-    fetchItems(target.id)
+    fetchItems(target.id, (target as any).collectionType || '')
   }
 
   const handleBackToRoot = () => {
@@ -176,12 +197,16 @@ const typeColors: Record<string, string> = {
   MOVIE: 'bg-red-500/10 text-red-500 border-red-500/20',
   TV_SHOW: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
   MUSIC: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+  PODCAST: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  AUDIOBOOK: 'bg-teal-500/10 text-teal-500 border-teal-500/20',
 }
 
 const typeIcons: Record<string, string> = {
   MOVIE: '🎬',
   TV_SHOW: '📺',
   MUSIC: '🎵',
+  PODCAST: '🎙️',
+  AUDIOBOOK: '📖',
 }
 
 const itemTypeLabels: Record<string, string> = {
@@ -194,6 +219,17 @@ const itemTypeLabels: Record<string, string> = {
   Audio: 'Track',
   MusicAlbum: 'Album',
   MusicArtist: 'Artist',
+  AudioBook: 'Audiobook',
+  LiveTvChannel: 'Live Channel',
+  LiveTvProgram: 'Live Program',
+}
+
+const typeLabels: Record<string, string> = {
+  MOVIE: 'Movie',
+  TV_SHOW: 'TV Show',
+  MUSIC: 'Music',
+  PODCAST: 'Podcast',
+  AUDIOBOOK: 'Audiobook',
 }
 
 function JellyfinCard({ item, onNavigate }: JellyfinCardProps) {
@@ -234,7 +270,7 @@ function JellyfinCard({ item, onNavigate }: JellyfinCardProps) {
             variant="outline"
             className={cnHelper("text-[10px] px-1.5 py-0 h-5 backdrop-blur-sm", typeColors[item.type] || 'bg-muted text-muted-foreground')}
           >
-            {item.hasChildren ? (itemTypeLabels[item.itemType] || item.itemType) : (itemTypeLabels[item.itemType] || item.type)}
+            {item.hasChildren ? (itemTypeLabels[item.itemType] || item.itemType) : (typeLabels[item.type] || itemTypeLabels[item.itemType] || item.type)}
           </Badge>
         </div>
 

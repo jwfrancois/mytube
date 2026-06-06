@@ -49,12 +49,16 @@ export async function GET(request: NextRequest) {
         type = 'TV_SHOW'
       } else if (collectionType === 'music' || item.Type === 'Audio' || item.Type === 'MusicAlbum') {
         type = 'MUSIC'
-      } else if (collectionType === 'books' || collectionType === 'podcasts') {
-        type = 'MUSIC' // Treat audiobooks/podcasts like music
+      } else if (collectionType === 'podcasts') {
+        type = 'PODCAST'
+      } else if (collectionType === 'books') {
+        type = 'AUDIOBOOK'
       } else if (item.Type === 'CollectionFolder' || item.Type === 'UserView') {
-        type = collectionType === 'tvshows' ? 'TV_SHOW' : collectionType === 'music' ? 'MUSIC' : 'MOVIE'
+        type = collectionType === 'tvshows' ? 'TV_SHOW' : collectionType === 'music' ? 'MUSIC' : collectionType === 'podcasts' ? 'PODCAST' : collectionType === 'books' ? 'AUDIOBOOK' : 'MOVIE'
       } else if (item.Type === 'Movie') {
         type = 'MOVIE'
+      } else if (item.Type === 'AudioBook') {
+        type = 'AUDIOBOOK'
       }
 
       // Calculate duration from ticks
