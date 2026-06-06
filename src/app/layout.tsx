@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MyTube - Your Personal Media Streaming Platform",
-  description: "Stream your movies, TV shows, and music all in one place. A YouTube-like personal media platform.",
-  keywords: ["streaming", "movies", "TV shows", "music", "media", "video player"],
+  title: "MyTube — Stream Everything",
+  description: "Your premium streaming platform for movies, TV shows, music, podcasts, and audiobooks. Powered by Jellyfin NAS.",
+  keywords: ["streaming", "movies", "TV shows", "music", "podcasts", "audiobooks", "media", "Jellyfin", "NAS"],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
   },
@@ -29,7 +29,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body
         suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}

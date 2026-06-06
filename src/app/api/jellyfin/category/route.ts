@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
  * Maps our MediaType to Jellyfin library CollectionType and fetches items recursively.
  *
  * Query params:
- *   type - MOVIE | TV_SHOW | MUSIC | PODCAST | AUDIOBOOK
+ *   type - MOVIE | TV_SHOW | MUSIC | PODCAST | AUDIOBOOK | COLLECTION
  *   limit - max items to return (default 100)
  */
 
@@ -16,6 +16,7 @@ const TYPE_TO_COLLECTION_TYPE: Record<string, string[]> = {
   MUSIC: ['music'],
   PODCAST: ['podcasts', 'music'], // Podcasts library may use 'music' collectionType
   AUDIOBOOK: ['books'],
+  COLLECTION: ['boxsets'],
 }
 
 // Library name patterns to match for each type (case-insensitive)
@@ -23,6 +24,7 @@ const TYPE_TO_COLLECTION_TYPE: Record<string, string[]> = {
 const TYPE_TO_NAME_PATTERNS: Record<string, RegExp[]> = {
   PODCAST: [/podcast/i],
   MUSIC: [], // No name filter — matches any library with 'music' collectionType not matched by other patterns
+  COLLECTION: [/collection/i],
 }
 
 // Name patterns to EXCLUDE for a type (libraries that match collectionType but should be excluded)
@@ -34,8 +36,9 @@ const TYPE_TO_ITEM_TYPES: Record<string, string> = {
   MOVIE: 'Movie',
   TV_SHOW: 'Series',
   MUSIC: 'MusicAlbum,Audio',
-  PODCAST: 'Series,Audio',
+  PODCAST: 'Series,Audio,LiveTvChannel,LiveTvProgram',
   AUDIOBOOK: 'AudioBook,Audio',
+  COLLECTION: 'BoxSet',
 }
 
 export async function GET(request: NextRequest) {
@@ -79,7 +82,8 @@ export async function GET(request: NextRequest) {
     const libraries = (viewsData.Items || []) as any[]
 
     // Find libraries matching our type
-    // First by collectionType, then by name pattern (include/exclude)
+    // Strategy: match by collectionType first, then by name pattern for disambiguation
+    // Also: for PODCAST, any library with "podcast" in the name matches regardless of CollectionType
     const namePatterns = TYPE_TO_NAME_PATTERNS[type] || []
     const excludePatterns = TYPE_TO_EXCLUDE_NAME_PATTERNS[type] || []
     const matchingLibraries = libraries.filter((lib: any) => {
@@ -100,6 +104,12 @@ export async function GET(request: NextRequest) {
         }
         return true
       }
+
+      // For PODCAST: also match any library with "podcast" in the name regardless of CollectionType
+      if (type === 'PODCAST' && /podcast/i.test(libName)) {
+        return true
+      }
+
       return false
     })
 
@@ -116,25 +126,27 @@ export async function GET(request: NextRequest) {
         const timeoutId = setTimeout(() => controller.abort(), 15000)
 
         let url: string
+        const commonFields = 'PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount'
+
         if (type === 'MUSIC') {
-          // For music, fetch albums (MusicAlbum) recursively
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=MusicAlbum&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=MusicAlbum&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'PODCAST') {
           // For podcasts, the library may use 'music' collectionType
-          // Podcast shows are stored as MusicAlbum in music-type libraries
-          // or as Series in podcast-type libraries
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Series,MusicAlbum&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          // Podcast shows are stored as MusicAlbum in music-type libraries,
+          // or as Series in podcast-type libraries,
+          // or as LiveTvChannel/LiveTvProgram in some setups
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Series,MusicAlbum,LiveTvChannel,LiveTvProgram&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'TV_SHOW') {
-          // For TV shows, fetch Series items
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Series&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Series&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'MOVIE') {
-          // For movies, fetch Movie items
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Movie&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Movie&Recursive=true&Fields=${commonFields},MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'AUDIOBOOK') {
-          // For audiobooks, fetch AudioBook items
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=AudioBook&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=AudioBook&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+        } else if (type === 'COLLECTION') {
+          // BoxSet (movie collections) — can exist at the root level or inside libraries
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=BoxSet&Recursive=true&Fields=${commonFields},MediaSources&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else {
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         }
 
         const res = await fetch(url, {
@@ -153,6 +165,39 @@ export async function GET(request: NextRequest) {
         }
       } catch (err) {
         console.error(`Error fetching from library ${lib.Name}:`, err)
+      }
+    }
+
+    // For COLLECTION type: also try fetching BoxSets at the root level (no ParentId filter)
+    // Some Jellyfin setups have BoxSets that don't belong to a specific library
+    if (type === 'COLLECTION') {
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 15000)
+
+        const url = `${server.serverUrl}/Items?UserId=${server.userId}&IncludeItemTypes=BoxSet&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount,MediaSources&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+        const res = await fetch(url, {
+          headers: { 'X-Emby-Token': server.accessToken },
+          signal: controller.signal,
+        })
+
+        clearTimeout(timeoutId)
+
+        if (res.ok) {
+          const data = await res.json()
+          const rootItems = (data.Items || []).map((item: any) =>
+            mapJellyfinItem(item, type, 'boxsets', '')
+          )
+          // Deduplicate: only add items not already in allItems
+          const existingIds = new Set(allItems.map(i => i.jellyfinId))
+          for (const item of rootItems) {
+            if (!existingIds.has(item.jellyfinId)) {
+              allItems.push(item)
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching root-level BoxSets:', err)
       }
     }
 
@@ -175,9 +220,14 @@ function mapJellyfinItem(item: any, requestType: string, collectionType: string,
   if (isPodcastLibrary) {
     if (item.Type === 'Series') type = 'PODCAST'
     else if (item.Type === 'Audio') type = 'PODCAST'
+    else if (item.Type === 'MusicAlbum') type = 'PODCAST'
+    else if (item.Type === 'LiveTvChannel') type = 'PODCAST'
+    else if (item.Type === 'LiveTvProgram') type = 'PODCAST'
   } else if (collectionType === 'books') {
     if (item.Type === 'AudioBook') type = 'AUDIOBOOK'
     else if (item.Type === 'Audio') type = 'AUDIOBOOK'
+  } else if (item.Type === 'BoxSet') {
+    type = 'COLLECTION'
   }
 
   let duration = ''
@@ -193,6 +243,7 @@ function mapJellyfinItem(item: any, requestType: string, collectionType: string,
     item.Type === 'Season' ||
     item.Type === 'MusicAlbum' ||
     item.Type === 'MusicArtist' ||
+    item.Type === 'BoxSet' ||
     item.IsFolder ||
     (item.ChildCount && item.ChildCount > 0)
 

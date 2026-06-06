@@ -57,6 +57,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Known server ID constant (not stored in DB to avoid schema migration)
+    const JELLYFIN_SERVER_ID = '363ac50118644e63bddcd34c6dc063a9'
+
     return NextResponse.json({
       success: true,
       server: {
@@ -66,6 +69,7 @@ export async function POST(request: NextRequest) {
         username: server.username,
         connected: server.connected,
         lastConnected: server.lastConnected,
+        serverId: JELLYFIN_SERVER_ID,
       },
     })
   } catch (error) {

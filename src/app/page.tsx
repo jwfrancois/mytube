@@ -13,7 +13,7 @@ import { SettingsDialog } from '@/components/SettingsDialog'
 import { JellyfinBrowser } from '@/components/JellyfinBrowser'
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
-import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones } from 'lucide-react'
+import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers } from 'lucide-react'
 
 function isAudioType(type: string): boolean {
   return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
@@ -75,14 +75,45 @@ export default function Home() {
     fetchMedia()
   }, [fetchMedia])
 
-  // Check Jellyfin connection on mount
+  // Check Jellyfin connection on mount, auto-connect if not connected
+  const autoConnectAttemptedRef = useRef(false)
+
   useEffect(() => {
     const checkJellyfin = async () => {
       try {
         const res = await fetch('/api/jellyfin/status')
         const data = await res.json()
-        setJellyfinConnected(data.connected)
-        if (data.server) setJellyfinServer(data.server)
+        if (data.connected) {
+          setJellyfinConnected(true)
+          if (data.server) setJellyfinServer(data.server)
+          return
+        }
+
+        // Not connected — attempt auto-connect once per session
+        if (autoConnectAttemptedRef.current) return
+        autoConnectAttemptedRef.current = true
+
+        try {
+          const connectRes = await fetch('/api/jellyfin/connect', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              serverUrl: 'https://manitou.dyabavadra.com',
+              username: 'dyabavadra',
+              password: 'bonjour66.',
+            }),
+          })
+
+          if (connectRes.ok) {
+            const connectData = await connectRes.json()
+            if (connectData.success) {
+              setJellyfinConnected(true)
+              if (connectData.server) setJellyfinServer(connectData.server)
+            }
+          }
+        } catch (connectErr) {
+          console.error('Auto-connect to Jellyfin failed:', connectErr)
+        }
       } catch {
         setJellyfinConnected(false)
       }
@@ -106,7 +137,6 @@ export default function Home() {
 
   const handlePlay = useCallback((item: any) => {
     // If item has children (series, album, etc.), don't play directly
-    // MediaCard handles navigation for these items
     if (item.isJellyfin && item.hasChildren) {
       return
     }
@@ -157,7 +187,7 @@ export default function Home() {
           mediaSourceId: h.mediaSourceId,
           collectionType: h.collectionType,
         })),
-        icon: <History className="h-5 w-5 text-emerald-500" />,
+        icon: <History className="h-5 w-5 text-emerald-400" />,
       })
     }
 
@@ -172,9 +202,9 @@ export default function Home() {
       if (popularItems.length > 0) {
         result.push({
           id: 'popular',
-          title: 'Popular',
+          title: 'Trending Now',
           items: popularItems,
-          icon: <TrendingUp className="h-5 w-5 text-red-500" />,
+          icon: <TrendingUp className="h-5 w-5 text-mythic" />,
         })
       }
     }
@@ -183,7 +213,7 @@ export default function Home() {
     if (watchLater.length > 0) {
       result.push({
         id: 'watch-later',
-        title: 'Watch Later',
+        title: 'My List',
         items: watchLater.map((w) => ({
           id: w.id,
           title: w.title,
@@ -206,7 +236,7 @@ export default function Home() {
           mediaSourceId: w.mediaSourceId,
           collectionType: w.collectionType,
         })),
-        icon: <Bookmark className="h-5 w-5 text-amber-500" />,
+        icon: <Bookmark className="h-5 w-5 text-amber-400" />,
       })
     }
 
@@ -216,49 +246,59 @@ export default function Home() {
     const jellyfinMusic = mediaItems.filter(i => i.isJellyfin && i.type === 'MUSIC')
     const jellyfinPodcasts = mediaItems.filter(i => i.isJellyfin && i.type === 'PODCAST')
     const jellyfinAudiobooks = mediaItems.filter(i => i.isJellyfin && i.type === 'AUDIOBOOK')
+    const jellyfinCollections = mediaItems.filter(i => i.isJellyfin && i.type === 'COLLECTION')
 
     if (jellyfinMovies.length > 0) {
       result.push({
         id: 'jellyfin-movies',
-        title: 'Movies on NAS',
+        title: 'Movies',
         items: jellyfinMovies,
-        icon: <Film className="h-5 w-5 text-red-500" />,
+        icon: <Film className="h-5 w-5 text-red-400" />,
       })
     }
 
     if (jellyfinTVShows.length > 0) {
       result.push({
         id: 'jellyfin-tvshows',
-        title: 'TV Shows on NAS',
+        title: 'TV Shows',
         items: jellyfinTVShows,
-        icon: <Tv className="h-5 w-5 text-emerald-500" />,
+        icon: <Tv className="h-5 w-5 text-emerald-400" />,
       })
     }
 
     if (jellyfinMusic.length > 0) {
       result.push({
         id: 'jellyfin-music',
-        title: 'Music on NAS',
+        title: 'Music',
         items: jellyfinMusic,
-        icon: <Music className="h-5 w-5 text-purple-500" />,
+        icon: <Music className="h-5 w-5 text-purple-400" />,
       })
     }
 
     if (jellyfinPodcasts.length > 0) {
       result.push({
         id: 'jellyfin-podcasts',
-        title: 'Podcasts on NAS',
+        title: 'Podcasts',
         items: jellyfinPodcasts,
-        icon: <Mic className="h-5 w-5 text-amber-500" />,
+        icon: <Mic className="h-5 w-5 text-amber-400" />,
       })
     }
 
     if (jellyfinAudiobooks.length > 0) {
       result.push({
         id: 'jellyfin-audiobooks',
-        title: 'Audiobooks on NAS',
+        title: 'Audiobooks',
         items: jellyfinAudiobooks,
-        icon: <Headphones className="h-5 w-5 text-teal-500" />,
+        icon: <Headphones className="h-5 w-5 text-teal-400" />,
+      })
+    }
+
+    if (jellyfinCollections.length > 0) {
+      result.push({
+        id: 'jellyfin-collections',
+        title: 'Collections',
+        items: jellyfinCollections,
+        icon: <Layers className="h-5 w-5 text-orange-400" />,
       })
     }
 

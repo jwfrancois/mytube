@@ -18,6 +18,7 @@ import {
   Settings,
   HelpCircle,
   Server,
+  FolderOpen,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -47,6 +48,7 @@ const collectionTypeIcons: Record<string, React.ElementType> = {
   podcasts: Mic,
   books: Headphones,
   homevideos: Film,
+  boxsets: FolderOpen,
 }
 
 const collectionTypeToMediaType: Record<string, MediaType> = {
@@ -56,6 +58,7 @@ const collectionTypeToMediaType: Record<string, MediaType> = {
   podcasts: 'PODCAST',
   books: 'AUDIOBOOK',
   homevideos: 'MOVIE',
+  boxsets: 'COLLECTION',
 }
 
 export function Sidebar() {
@@ -110,6 +113,7 @@ export function Sidebar() {
     { icon: Music, label: 'Music', category: 'MUSIC', active: activeCategory === 'MUSIC' },
     { icon: Mic, label: 'Podcasts', category: 'PODCAST', active: activeCategory === 'PODCAST' },
     { icon: Headphones, label: 'Audiobooks', category: 'AUDIOBOOK', active: activeCategory === 'AUDIOBOOK' },
+    { icon: FolderOpen, label: 'Collections', category: 'COLLECTION', active: activeCategory === 'COLLECTION' },
   ]
 
   const jellyfinItems: SidebarItem[] = [
@@ -138,26 +142,29 @@ export function Sidebar() {
 
   if (!sidebarOpen) {
     return (
-      <aside className="w-[72px] shrink-0 border-r border-border bg-background flex flex-col items-center py-2 gap-1">
+      <aside className="w-[72px] shrink-0 border-r border-border/50 bg-sidebar/80 backdrop-blur-sm flex flex-col items-center py-2 gap-1">
         {mainItems.map((item) => (
           <Button
             key={item.label}
             variant="ghost"
-            className="flex flex-col items-center gap-1 h-auto py-3 px-2 w-full"
+            className={cn(
+              "flex flex-col items-center gap-1 h-auto py-3 px-2 w-full rounded-lg transition-colors",
+              item.active && "text-mythic"
+            )}
             onClick={() => handleItemClick(item)}
           >
             <item.icon className="h-5 w-5" />
             <span className="text-[10px] leading-tight">{item.label}</span>
           </Button>
         ))}
-        <Separator className="my-1" />
+        <Separator className="my-1 bg-white/5" />
         {categoryItems.map((item) => (
           <Button
             key={item.label}
             variant="ghost"
             className={cn(
-              "flex flex-col items-center gap-1 h-auto py-3 px-2 w-full",
-              item.active && "bg-accent"
+              "flex flex-col items-center gap-1 h-auto py-3 px-2 w-full rounded-lg transition-colors",
+              item.active && "text-mythic bg-mythic/10"
             )}
             onClick={() => handleItemClick(item)}
           >
@@ -167,14 +174,14 @@ export function Sidebar() {
         ))}
         {jellyfinConnected && (
           <>
-            <Separator className="my-1" />
+            <Separator className="my-1 bg-white/5" />
             {jellyfinItems.map((item) => (
               <Button
                 key={item.label}
                 variant="ghost"
                 className={cn(
-                  "flex flex-col items-center gap-1 h-auto py-3 px-2 w-full",
-                  item.active && "bg-accent"
+                  "flex flex-col items-center gap-1 h-auto py-3 px-2 w-full rounded-lg transition-colors",
+                  item.active && "text-mythic bg-mythic/10"
                 )}
                 onClick={() => handleItemClick(item)}
               >
@@ -187,7 +194,7 @@ export function Sidebar() {
         <div className="mt-auto">
           <Button
             variant="ghost"
-            className="flex flex-col items-center gap-1 h-auto py-3 px-2 w-full"
+            className="flex flex-col items-center gap-1 h-auto py-3 px-2 w-full rounded-lg"
             onClick={handleSettingsClick}
           >
             <Settings className="h-5 w-5" />
@@ -199,18 +206,18 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-60 shrink-0 border-r border-border bg-background hidden md:block">
+    <aside className="w-60 shrink-0 border-r border-border/50 bg-sidebar/80 backdrop-blur-sm hidden md:block">
       <ScrollArea className="h-[calc(100vh-3.5rem)]">
         <div className="py-2">
           {/* Main */}
-          <div className="px-3">
+          <div className="px-2">
             {mainItems.map((item) => (
               <Button
                 key={item.label}
                 variant="ghost"
                 className={cn(
-                  "w-full justify-start gap-4 px-3 py-2 h-9 font-normal",
-                  item.active && "bg-accent font-medium"
+                  "w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg transition-all duration-200",
+                  item.active && "bg-mythic/10 text-mythic font-medium border-l-2 border-mythic"
                 )}
                 onClick={() => handleItemClick(item)}
               >
@@ -220,18 +227,18 @@ export function Sidebar() {
             ))}
           </div>
 
-          <Separator className="my-2" />
+          <Separator className="my-2 bg-white/5" />
 
           {/* Categories */}
-          <div className="px-3">
-            <p className="px-3 mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">Categories</p>
+          <div className="px-2">
+            <p className="px-3 mb-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Categories</p>
             {categoryItems.map((item) => (
               <Button
                 key={item.label}
                 variant="ghost"
                 className={cn(
-                  "w-full justify-start gap-4 px-3 py-2 h-9 font-normal",
-                  item.active && "bg-accent font-medium"
+                  "w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg transition-all duration-200",
+                  item.active && "bg-mythic/10 text-mythic font-medium border-l-2 border-mythic"
                 )}
                 onClick={() => handleItemClick(item)}
               >
@@ -244,11 +251,12 @@ export function Sidebar() {
           {/* Jellyfin Section */}
           {jellyfinConnected && (
             <>
-              <Separator className="my-2" />
-              <div className="px-3">
-                <p className="px-3 mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Separator className="my-2 bg-white/5" />
+              <div className="px-2">
+                <p className="px-3 mb-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest flex items-center gap-1.5">
                   <Server className="h-3 w-3" />
                   NAS Server
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse-dot ml-auto" />
                 </p>
                 {/* Browse all */}
                 {jellyfinItems.map((item) => (
@@ -256,14 +264,14 @@ export function Sidebar() {
                     key={item.label}
                     variant="ghost"
                     className={cn(
-                      "w-full justify-start gap-4 px-3 py-2 h-9 font-normal",
-                      item.active && "bg-accent font-medium"
+                      "w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg transition-all duration-200",
+                      item.active && "bg-mythic/10 text-mythic font-medium border-l-2 border-mythic"
                     )}
                     onClick={() => handleItemClick(item)}
                   >
                     <item.icon className="h-5 w-5 shrink-0" />
                     <span>{item.label}</span>
-                    <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-4 text-emerald-500 border-emerald-500/30">
+                    <Badge variant="outline" className="ml-auto text-[8px] px-1 py-0 h-4 text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
                       Online
                     </Badge>
                   </Button>
@@ -280,8 +288,8 @@ export function Sidebar() {
                           key={lib.id}
                           variant="ghost"
                           className={cn(
-                            "w-full justify-start gap-3 px-3 py-1.5 h-8 font-normal text-xs",
-                            isActive && "bg-accent font-medium"
+                            "w-full justify-start gap-3 px-3 py-1.5 h-8 font-normal text-xs rounded-lg transition-all duration-200",
+                            isActive && "bg-mythic/10 text-mythic font-medium border-l-2 border-mythic"
                           )}
                           onClick={() => {
                             setCurrentMedia(null)
@@ -301,16 +309,16 @@ export function Sidebar() {
             </>
           )}
 
-          <Separator className="my-2" />
+          <Separator className="my-2 bg-white/5" />
 
           {/* Library */}
-          <div className="px-3">
-            <p className="px-3 mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">Library</p>
+          <div className="px-2">
+            <p className="px-3 mb-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Library</p>
             {libraryItems.map((item) => (
               <Button
                 key={item.label}
                 variant="ghost"
-                className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal"
+                className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg transition-all duration-200"
                 onClick={() => handleItemClick(item)}
               >
                 <item.icon className="h-5 w-5 shrink-0" />
@@ -319,13 +327,13 @@ export function Sidebar() {
             ))}
           </div>
 
-          <Separator className="my-2" />
+          <Separator className="my-2 bg-white/5" />
 
           {/* Bottom */}
-          <div className="px-3">
+          <div className="px-2">
             <Button
               variant="ghost"
-              className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal"
+              className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg"
               onClick={handleSettingsClick}
             >
               <Settings className="h-5 w-5 shrink-0" />
@@ -333,7 +341,7 @@ export function Sidebar() {
             </Button>
             <Button
               variant="ghost"
-              className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal"
+              className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg"
             >
               <HelpCircle className="h-5 w-5 shrink-0" />
               <span>Help</span>
@@ -341,9 +349,9 @@ export function Sidebar() {
           </div>
 
           {/* Footer */}
-          <div className="px-6 py-4 text-xs text-muted-foreground">
+          <div className="px-6 py-4 text-[10px] text-muted-foreground/40">
             <p>&copy; 2024 MyTube</p>
-            <p className="mt-1">A personal media streaming platform</p>
+            <p className="mt-0.5">Premium streaming platform</p>
           </div>
         </div>
       </ScrollArea>

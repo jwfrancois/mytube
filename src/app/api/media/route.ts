@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
           }
         } else {
           // No type filter (ALL/home) — fetch items from all Jellyfin categories
-          const types = ['MOVIE', 'TV_SHOW', 'MUSIC', 'PODCAST', 'AUDIOBOOK']
+          const types = ['MOVIE', 'TV_SHOW', 'MUSIC', 'PODCAST', 'AUDIOBOOK', 'COLLECTION']
           const results = await Promise.allSettled(
             types.map(async (t) => {
               const jellyfinRes = await fetch(

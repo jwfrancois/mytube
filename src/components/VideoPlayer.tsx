@@ -754,9 +754,21 @@ export function VideoPlayer() {
   const isAudio = isAudioType(currentMedia.type)
   const isJellyfin = currentMedia.isJellyfin
 
+  // Check if this item is a browsable container (Series, Collection, Album, etc.)
+  // These items should show a detail view with children, NOT try to play directly
+  const isBrowsableContainer = isJellyfin && currentMedia.hasChildren && (
+    currentMedia.itemType === 'Series' ||
+    currentMedia.itemType === 'BoxSet' ||
+    currentMedia.itemType === 'MusicAlbum' ||
+    currentMedia.itemType === 'MusicArtist' ||
+    currentMedia.itemType === 'Season' ||
+    currentMedia.type === 'COLLECTION' ||
+    (currentMedia.type === 'TV_SHOW' && currentMedia.itemType !== 'Episode')
+  )
+
   // Build the video URL
   let videoSrc = currentMedia.videoUrl
-  if (isJellyfin && currentMedia.jellyfinId) {
+  if (isJellyfin && currentMedia.jellyfinId && !isBrowsableContainer) {
     const streamParams = new URLSearchParams()
     streamParams.set('mediaType', isAudio ? 'audio' : 'video')
     if (currentMedia.mediaSourceId) {
@@ -802,7 +814,76 @@ export function VideoPlayer() {
     )
   }
 
-  // ─── Video Player View (Movies/TV Shows) ───
+  // ─── Browsable Container View (Series, Collections, Albums) ───
+  // These items show a detail view with seasons/episodes/movies instead of playing directly
+  if (isBrowsableContainer) {
+    const typeColor = {
+      TV_SHOW: 'bg-emerald-500/10 text-emerald-500',
+      COLLECTION: 'bg-orange-500/10 text-orange-500',
+      MOVIE: 'bg-red-500/10 text-red-500',
+    }[currentMedia.type] || ''
+    const typeLabel = currentMedia.type === 'COLLECTION' ? 'Collection' : currentMedia.type === 'TV_SHOW' ? 'TV Series' : currentMedia.type.charAt(0) + currentMedia.type.slice(1).toLowerCase()
+
+    return (
+      <div className="h-[calc(100vh-3.5rem)] overflow-y-auto">
+        <div className="max-w-5xl mx-auto p-4 lg:p-6">
+          {/* Back button */}
+          <Button variant="ghost" size="sm" onClick={handleBack} className="mb-3 -ml-2 gap-1">
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </Button>
+
+          {/* Hero header with backdrop */}
+          <div className="relative rounded-xl overflow-hidden mb-6">
+            {currentMedia.thumbnail ? (
+              <img
+                src={currentMedia.thumbnail}
+                alt={currentMedia.title}
+                className="w-full h-48 sm:h-64 object-cover"
+              />
+            ) : (
+              <div className="w-full h-48 sm:h-64 bg-gradient-to-br from-muted to-muted-foreground/10" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+            <div className="absolute bottom-0 left-0 right-0 p-6">
+              <div className="flex items-center gap-2 mb-2">
+                <Badge variant="outline" className={cn("text-xs", typeColor)}>
+                  {typeLabel}
+                </Badge>
+                {currentMedia.releaseYear > 0 && (
+                  <Badge variant="outline" className="text-xs">{currentMedia.releaseYear}</Badge>
+                )}
+                {currentMedia.communityRating && (
+                  <Badge variant="outline" className="text-xs gap-1">
+                    ⭐ {currentMedia.communityRating.toFixed(1)}
+                  </Badge>
+                )}
+                {isJellyfin && (
+                  <Badge variant="outline" className="text-xs gap-1 bg-emerald-500/10 text-emerald-500 border-emerald-500/20">
+                    <Server className="h-3 w-3" /> NAS
+                  </Badge>
+                )}
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-bold">{currentMedia.title}</h1>
+              {currentMedia.genre && (
+                <p className="text-sm text-muted-foreground mt-1">{currentMedia.genre}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Rich Media Detail Panel with seasons/episodes/collection items */}
+          <MediaDetail
+            jellyfinId={isJellyfin ? currentMedia.jellyfinId : undefined}
+            title={currentMedia.title}
+            type={currentMedia.type}
+            itemType={currentMedia.itemType}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  // ─── Video Player View (Movies/Episodes) ───
   const typeColor = {
     MOVIE: 'bg-red-500/10 text-red-500',
     TV_SHOW: 'bg-emerald-500/10 text-emerald-500',

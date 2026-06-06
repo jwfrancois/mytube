@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'PODCAST' | 'AUDIOBOOK' | 'JELLYFIN'
+export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'PODCAST' | 'AUDIOBOOK' | 'COLLECTION' | 'JELLYFIN'
 export type SortType = 'recent' | 'popular'
 
 export interface MediaItem {

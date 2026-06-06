@@ -222,6 +222,7 @@ const itemTypeLabels: Record<string, string> = {
   AudioBook: 'Audiobook',
   LiveTvChannel: 'Live Channel',
   LiveTvProgram: 'Live Program',
+  BoxSet: 'Collection',
 }
 
 const typeLabels: Record<string, string> = {
@@ -230,6 +231,7 @@ const typeLabels: Record<string, string> = {
   MUSIC: 'Music',
   PODCAST: 'Podcast',
   AUDIOBOOK: 'Audiobook',
+  COLLECTION: 'Collection',
 }
 
 function JellyfinCard({ item, onNavigate }: JellyfinCardProps) {

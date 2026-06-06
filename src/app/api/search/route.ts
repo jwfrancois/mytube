@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         const timeoutId = setTimeout(() => controller.abort(), 10000)
 
         const jellyfinRes = await fetch(
-          `${server.serverUrl}/Items?UserId=${server.userId}&SearchTerm=${encodeURIComponent(q)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,MusicAlbum&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=30`,
+          `${server.serverUrl}/Items?UserId=${server.userId}&SearchTerm=${encodeURIComponent(q)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,MusicAlbum,LiveTvChannel,LiveTvProgram,BoxSet&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=30`,
           {
             headers: { 'X-Emby-Token': server.accessToken },
             signal: controller.signal,
@@ -51,11 +51,41 @@ export async function GET(request: NextRequest) {
 
         if (jellyfinRes.ok) {
           const jellyfinData = await jellyfinRes.json()
+          // Get libraries to determine parent collection types for podcast detection
+          const libraries = await getLibraries(server.serverUrl, server.userId, server.accessToken)
+
           jellyfinItems = (jellyfinData.Items || []).map((item: any) => {
+            // Determine the parent library for this item to check its collection type
+            const parentLib = libraries.find((lib: any) => {
+              // Check if the item's ParentId matches the library Id
+              // or if the item is nested under the library
+              return item.ParentId === lib.Id
+            })
+
+            const parentCollectionType = parentLib?.CollectionType || ''
+            const parentLibName = parentLib?.Name || ''
+
             let itemType = 'MOVIE'
-            if (item.Type === 'Series') itemType = 'TV_SHOW'
+            if (item.Type === 'Series') {
+              // Check if it's in a podcast library
+              if (isPodcastLibrary(parentCollectionType, parentLibName)) {
+                itemType = 'PODCAST'
+              } else {
+                itemType = 'TV_SHOW'
+              }
+            }
             else if (item.Type === 'AudioBook') itemType = 'AUDIOBOOK'
-            else if (item.Type === 'Audio' || item.Type === 'MusicAlbum') itemType = 'MUSIC'
+            else if (item.Type === 'Audio' || item.Type === 'MusicAlbum') {
+              if (isPodcastLibrary(parentCollectionType, parentLibName)) {
+                itemType = 'PODCAST'
+              } else {
+                itemType = 'MUSIC'
+              }
+            }
+            else if (item.Type === 'LiveTvChannel' || item.Type === 'LiveTvProgram') {
+              itemType = 'PODCAST'
+            }
+            else if (item.Type === 'BoxSet') itemType = 'COLLECTION'
 
             let duration = ''
             if (item.RunTimeTicks) {
@@ -66,7 +96,7 @@ export async function GET(request: NextRequest) {
             }
 
             const hasChildren = item.Type === 'Series' || item.Type === 'Season' ||
-              item.Type === 'MusicAlbum' || item.IsFolder ||
+              item.Type === 'MusicAlbum' || item.Type === 'BoxSet' || item.IsFolder ||
               (item.ChildCount && item.ChildCount > 0)
 
             return {
@@ -92,6 +122,7 @@ export async function GET(request: NextRequest) {
               hasChildren,
               childCount: item.ChildCount || 0,
               communityRating: item.CommunityRating,
+              collectionType: parentCollectionType,
             }
           })
         }
@@ -107,5 +138,31 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error searching media:', error)
     return NextResponse.json({ error: 'Search failed' }, { status: 500 })
+  }
+}
+
+function isPodcastLibrary(collectionType: string, libraryName: string): boolean {
+  return collectionType === 'podcasts' || /podcast/i.test(libraryName)
+}
+
+async function getLibraries(serverUrl: string, userId: string, accessToken: string): Promise<any[]> {
+  try {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+    const res = await fetch(`${serverUrl}/Users/${userId}/Views`, {
+      headers: { 'X-Emby-Token': accessToken },
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (res.ok) {
+      const data = await res.json()
+      return data.Items || []
+    }
+    return []
+  } catch {
+    return []
   }
 }

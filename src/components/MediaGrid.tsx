@@ -3,9 +3,10 @@
 import { useRef, useState } from 'react'
 import { useAppStore, MediaType } from '@/store/useAppStore'
 import { MediaCard } from '@/components/MediaCard'
+import { HeroBanner } from '@/components/HeroBanner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface MediaSection {
@@ -57,37 +58,36 @@ function HorizontalShelf({
       left: direction === 'left' ? -scrollAmount : scrollAmount,
       behavior: 'smooth',
     })
-    // Check scroll after animation
     setTimeout(checkScroll, 350)
   }
 
   if (section.items.length === 0) return null
 
   return (
-    <section className="mb-6">
-      {/* Section header */}
-      <div className="flex items-center justify-between mb-3 px-6">
-        <div className="flex items-center gap-2">
+    <section className="mb-8 animate-fade-in-up">
+      {/* Netflix-style section header */}
+      <div className="flex items-center justify-between mb-3 px-6 group/header">
+        <div className="flex items-center gap-2.5">
           {section.icon}
-          <h2 className="text-lg font-semibold">{section.title}</h2>
-          <span className="text-sm text-muted-foreground">({section.items.length})</span>
+          <h2 className="text-lg sm:text-xl font-bold tracking-tight">{section.title}</h2>
+          <span className="text-xs text-muted-foreground/60 font-medium">({section.items.length})</span>
         </div>
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
-            className="text-xs text-primary hover:text-primary"
+            className="text-xs text-mythic hover:text-mythic-foreground font-semibold gap-1 opacity-0 group-hover/header:opacity-100 transition-opacity"
             onClick={() => setExpanded(!expanded)}
           >
             {expanded ? 'Show less' : 'See all'}
-            {expanded ? <ChevronUp className="ml-1 h-3.5 w-3.5" /> : <ChevronDown className="ml-1 h-3.5 w-3.5" />}
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </Button>
         </div>
       </div>
 
       {expanded ? (
         // Expanded grid view
-        <div className="px-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="px-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {section.items.map((item) => (
             <MediaCard
               key={item.id}
@@ -100,29 +100,29 @@ function HorizontalShelf({
           ))}
         </div>
       ) : (
-        // Horizontal scrollable row
+        // Horizontal scrollable row — Netflix style
         <div className="relative group/shelf">
           {/* Left scroll button */}
           {canScrollLeft && (
             <Button
-              variant="secondary"
+              variant="ghost"
               size="icon"
-              className="absolute left-1 top-1/2 -translate-y-1/2 z-10 h-9 w-9 rounded-full shadow-lg opacity-0 group-hover/shelf:opacity-100 transition-opacity"
+              className="absolute left-1 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-black/60 text-white hover:bg-black/80 shadow-xl opacity-0 group-hover/shelf:opacity-100 transition-opacity border border-white/10 backdrop-blur-sm"
               onClick={() => scroll('left')}
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-5 w-5" />
             </Button>
           )}
 
           {/* Scrollable container */}
           <div
             ref={scrollRef}
-            className="flex gap-4 overflow-x-auto px-6 pb-2 scrollbar-thin scrollbar-thumb-muted-foreground/20 scrollbar-track-transparent"
+            className="flex gap-3 overflow-x-auto px-6 pb-2 shelf-scrollbar"
             onScroll={checkScroll}
             onLoad={checkScroll}
           >
             {section.items.map((item) => (
-              <div key={item.id} className="shrink-0 w-[260px] sm:w-[280px]">
+              <div key={item.id} className="shrink-0 w-[200px] sm:w-[220px] lg:w-[240px] row-item">
                 <MediaCard
                   item={item}
                   onWatchLater={onWatchLater}
@@ -137,21 +137,21 @@ function HorizontalShelf({
           {/* Right scroll button */}
           {canScrollRight && (
             <Button
-              variant="secondary"
+              variant="ghost"
               size="icon"
-              className="absolute right-1 top-1/2 -translate-y-1/2 z-10 h-9 w-9 rounded-full shadow-lg opacity-0 group-hover/shelf:opacity-100 transition-opacity"
+              className="absolute right-1 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-black/60 text-white hover:bg-black/80 shadow-xl opacity-0 group-hover/shelf:opacity-100 transition-opacity border border-white/10 backdrop-blur-sm"
               onClick={() => scroll('right')}
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-5 w-5" />
             </Button>
           )}
 
           {/* Fade edges */}
           {canScrollLeft && (
-            <div className="absolute left-0 top-0 bottom-2 w-12 bg-gradient-to-r from-background to-transparent pointer-events-none z-[5]" />
+            <div className="absolute left-0 top-0 bottom-2 w-16 bg-gradient-to-r from-background to-transparent pointer-events-none z-[5]" />
           )}
           {canScrollRight && (
-            <div className="absolute right-0 top-0 bottom-2 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none z-[5]" />
+            <div className="absolute right-0 top-0 bottom-2 w-16 bg-gradient-to-l from-background to-transparent pointer-events-none z-[5]" />
           )}
         </div>
       )}
@@ -169,70 +169,107 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
     MUSIC: 'Music',
     PODCAST: 'Podcasts',
     AUDIOBOOK: 'Audiobooks',
+    COLLECTION: 'Collections',
     JELLYFIN: 'Jellyfin NAS',
   }
 
   if (isLoading) {
     return (
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <Skeleton className="h-8 w-40" />
-          <Skeleton className="h-9 w-32" />
+      <div className="py-6">
+        {/* Hero skeleton */}
+        <div className="relative w-full h-[50vh] min-h-[360px] max-h-[600px] mb-8">
+          <Skeleton className="w-full h-full rounded-none" />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div key={i} className="space-y-2">
-              <Skeleton className="aspect-video rounded-xl w-full" />
-              <div className="flex gap-3">
-                <Skeleton className="h-9 w-9 rounded-full shrink-0" />
-                <div className="space-y-1 flex-1">
-                  <Skeleton className="h-4 w-3/4" />
-                  <Skeleton className="h-3 w-1/2" />
+        {/* Section skeletons */}
+        {[1, 2, 3].map((s) => (
+          <div key={s} className="mb-8 px-6">
+            <Skeleton className="h-6 w-40 mb-4" />
+            <div className="flex gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="shrink-0 w-[220px] space-y-2">
+                  <Skeleton className="aspect-video rounded-lg w-full shimmer" />
+                  <div className="flex gap-2">
+                    <Skeleton className="h-8 w-8 rounded-full shrink-0" />
+                    <div className="space-y-1 flex-1">
+                      <Skeleton className="h-3.5 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
     )
   }
 
-  // If sections are provided, render them as horizontal shelves
+  // If sections are provided, render them as horizontal shelves with hero banner
   if (sections && sections.length > 0) {
-    return (
-      <div className="py-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6 px-6">
-          <h1 className="text-2xl font-bold">{categoryTitle[activeCategory] || 'Home'}</h1>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={sortBy === 'popular' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setSortBy('popular')}
-              className="gap-1"
-            >
-              Popular
-            </Button>
-            <Button
-              variant={sortBy === 'recent' ? 'secondary' : 'ghost'}
-              size="sm"
-              onClick={() => setSortBy('recent')}
-              className="gap-1"
-            >
-              Recent
-            </Button>
-          </div>
-        </div>
+    // Build hero items from top-rated items across all sections
+    const heroItems = items
+      .filter(i => i.thumbnail && (i.type === 'MOVIE' || i.type === 'TV_SHOW' || i.type === 'COLLECTION'))
+      .sort((a, b) => {
+        const scoreA = a.communityRating ? a.communityRating * 100 : a.views || 0
+        const scoreB = b.communityRating ? b.communityRating * 100 : b.views || 0
+        return scoreB - scoreA
+      })
+      .slice(0, 8)
 
-        {sections.map((section) => (
-          <HorizontalShelf
-            key={section.id}
-            section={section}
-            onWatchLater={onWatchLater}
-            onRemoveWatchLater={onRemoveWatchLater}
-            isInWatchLater={isInWatchLater}
-            onPlay={onPlay}
+    return (
+      <div className="pb-6">
+        {/* Hero Banner — only on Home page */}
+        {activeCategory === 'ALL' && heroItems.length > 0 && (
+          <HeroBanner
+            items={heroItems}
+            onPlay={(item) => onPlay?.(item)}
+            onMoreInfo={(item) => {
+              // Open detail view for the item
+              const { setCurrentMedia } = useAppStore.getState()
+              setCurrentMedia(item)
+            }}
           />
+        )}
+
+        {/* Section Header — only when NOT on ALL (hero replaces it for home) */}
+        {activeCategory !== 'ALL' && (
+          <div className="flex items-center justify-between mb-6 px-6 pt-6">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight">{categoryTitle[activeCategory] || 'Home'}</h1>
+              <Sparkles className="h-5 w-5 text-mythic" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Button
+                variant={sortBy === 'popular' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setSortBy('popular')}
+                className={cn("gap-1 text-xs", sortBy === 'popular' && "bg-mythic/20 text-mythic-foreground")}
+              >
+                Popular
+              </Button>
+              <Button
+                variant={sortBy === 'recent' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setSortBy('recent')}
+                className={cn("gap-1 text-xs", sortBy === 'recent' && "bg-mythic/20 text-mythic-foreground")}
+              >
+                Recent
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Horizontal shelves */}
+        {sections.map((section, index) => (
+          <div key={section.id} style={{ animationDelay: `${index * 80}ms` }}>
+            <HorizontalShelf
+              section={section}
+              onWatchLater={onWatchLater}
+              onRemoveWatchLater={onRemoveWatchLater}
+              isInWatchLater={isInWatchLater}
+              onPlay={onPlay}
+            />
+          </div>
         ))}
       </div>
     )

@@ -13,6 +13,9 @@ export async function GET() {
 
     // Return connection info from DB without making external requests
     // External verification can cause process stability issues
+    // Known server ID constant (not stored in DB to avoid schema migration)
+    const JELLYFIN_SERVER_ID = '363ac50118644e63bddcd34c6dc063a9'
+
     return NextResponse.json({
       connected: server.connected,
       server: {
@@ -22,6 +25,7 @@ export async function GET() {
         username: server.username,
         connected: server.connected,
         lastConnected: server.lastConnected,
+        serverId: JELLYFIN_SERVER_ID,
       },
     })
   } catch (error) {

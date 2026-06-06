@@ -154,6 +154,32 @@ export async function GET(
       }
     }
 
+    // For BoxSet type, fetch children (movies in the collection)
+    if (item.Type === 'BoxSet') {
+      try {
+        const childrenUrl = `${server.serverUrl}/Items?ParentId=${itemId}&UserId=${server.userId}&Fields=PrimaryImageAspectRatio,Overview,Genres,RunTimeTicks,ProductionYear,CommunityRating,MediaSources&SortBy=SortName&SortOrder=Ascending`
+        const childrenController = new AbortController()
+        const childrenTimeout = setTimeout(() => childrenController.abort(), 10000)
+
+        const childrenRes = await fetch(childrenUrl, {
+          headers: {
+            'X-Emby-Token': server.accessToken,
+          },
+          signal: childrenController.signal,
+        })
+
+        clearTimeout(childrenTimeout)
+
+        if (childrenRes.ok) {
+          const childrenData = await childrenRes.json()
+          result.children = childrenData.Items || []
+        }
+      } catch (err) {
+        console.error('Error fetching BoxSet children:', err)
+        result.children = []
+      }
+    }
+
     return NextResponse.json(result)
   } catch (error) {
     console.error('Jellyfin details error:', error)
