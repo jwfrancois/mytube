@@ -161,7 +161,11 @@ export function MediaCard({ item, onWatchLater, onRemoveWatchLater, isInWatchLat
         {/* Child count badge for folders */}
         {isJellyfinFolder && item.childCount > 0 && (
           <div className="absolute bottom-1.5 right-1.5 bg-black/80 text-white text-[10px] px-1.5 py-0.5 rounded font-medium backdrop-blur-sm">
-            {item.childCount} items
+            {item.itemType === 'Series'
+              ? `${item.childCount} Season${item.childCount !== 1 ? 's' : ''}`
+              : item.type === 'PODCAST'
+              ? `${item.childCount.toLocaleString()} Episode${item.childCount !== 1 ? 's' : ''}`
+              : `${item.childCount} items`}
           </div>
         )}
 

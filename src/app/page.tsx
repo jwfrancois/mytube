@@ -136,8 +136,9 @@ export default function Home() {
   }, [searchQuery, setSearchResults, setIsSearching])
 
   const handlePlay = useCallback((item: any) => {
-    // If item has children (series, album, etc.), don't play directly
+    // If item has children (series, album, podcast show, etc.), open detail view
     if (item.isJellyfin && item.hasChildren) {
+      setCurrentMedia(item)
       return
     }
     setCurrentMedia(item)

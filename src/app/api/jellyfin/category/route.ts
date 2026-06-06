@@ -166,11 +166,10 @@ export async function GET(request: NextRequest) {
         if (type === 'MUSIC') {
           url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=MusicAlbum&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'PODCAST') {
-          // For podcasts, the library may use 'music' collectionType
-          // Podcast shows are stored as MusicAlbum in music-type libraries,
-          // or as Series in podcast-type libraries,
-          // or as LiveTvChannel/LiveTvProgram in some setups
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Series,MusicAlbum,LiveTvChannel,LiveTvProgram&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          // For podcasts, the library uses 'music' collectionType
+          // Podcast shows are stored as MusicAlbum in music-type libraries.
+          // Only request MusicAlbum type for performance (no Series/LiveTv needed for typical podcasts)
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=MusicAlbum&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'TV_SHOW') {
           url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Series&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'MOVIE') {

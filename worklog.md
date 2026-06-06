@@ -148,3 +148,132 @@ Stage Summary:
 - All items are deduplicated across categories
 - Select component no longer shows controlled/uncontrolled warning
 - All lint checks pass with zero errors
+
+---
+Task ID: 2
+Agent: video-player-fixer
+Task: Fix media player - audio not working, black screen on some videos
+
+Work Log:
+- Analyzed root causes: (1) bare `<video>` element can't play HLS streams in Chrome/Firefox, (2) AudioPlayerView used `<video>` instead of `<audio>` element, (3) stream API didn't support HLS format, (4) no error recovery/fallback in video player
+- Rewrote `/api/jellyfin/stream/[itemId]/route.ts`: Added `streamFormat` query parameter supporting `direct`, `hls`, and `transcode` modes. When `streamFormat=hls`, returns JSON with the direct Jellyfin `.m3u8` URL so hls.js can load it with proper headers. Separated audio handling to use the universal audio endpoint with proper params. Fixed audio Content-Type defaults.
+- Rewrote `VideoPlayer.tsx`: Created `useHlsVideoPlayer` hook that manages hls.js lifecycle with automatic fallback chain (direct → hls → transcode). Dynamically imports hls.js (client-only). Changed AudioPlayerView from `<video ref>` to `<audio ref>` for proper audio playback. Added error recovery: auto-fallback on video errors, user-facing error overlay with Retry/Try HLS/Try Transcoding buttons. Added strategy indicator badge showing current playback mode. Volume NOT muted by default (0.8).
+- Updated `AudioPlayerBar.tsx`: Added error handling with auto-retry (up to 2 attempts) on audio load failure. Added error banner with Retry button. Added `canplay` event handler to clear errors. Fixed play/pause/volume sync effects with proper dependency arrays.
+- All lint checks pass with zero errors
+
+Stage Summary:
+- Video player now supports HLS streams via hls.js with automatic fallback (direct → HLS → transcode)
+- AudioPlayerView uses `<audio>` element instead of `<video>` for proper audio playback
+- AudioPlayerBar has error recovery with auto-retry and manual retry button
+- Stream API supports three formats: direct (proxied), hls (JSON with .m3u8 URL), transcode (forced MP4+AAC)
+- User-facing error overlays with multiple retry strategies instead of just "Try Transcoding"
+- Strategy indicator badge shows when using HLS or transcoding mode
+- Zero lint errors, dev server compiles successfully
+
+---
+Task ID: 3
+Agent: metadata-enhancer
+Task: Enhance MediaDetail with rich metadata - directors, writers, runtime, status, crew
+
+Work Log:
+- Enhanced `/api/jellyfin/details/[itemId]/route.ts` with extended Jellyfin API fields:
+  - Added `CriticRating`, `ProviderIds`, `MediaStreams`, `Status`, `AirDays`, `ProductionLocations`, `ExternalUrls`, `RecursiveItemCount`, `TotalSeasonCount`, `CumulativeRunTimeTicks` to Fields parameter
+  - Split People into actors and crew (Directors, Writers, Producers, Creators, Showrunners)
+  - Added `criticRating` to response
+  - Added `runtime` in readable format (e.g. "2h 15m") alongside `runTimeTicks`
+  - Added `cumulativeRuntime` for collections (total runtime of all items)
+  - Added `status` field ("Continuing", "Ended", "Released")
+  - Added `airDays` and `airTime` for Series
+  - Added `providerIds` (IMDb, TMDB, TVDB) and `externalUrls` with direct links
+  - Added `mediaInfo` object with detailed video/audio stream info (codec, resolution, HDR, channels, subtitles, file size)
+  - Added `totalSeasonCount` and `totalEpisodeCount` for Series
+  - Added `productionLocations` for country info
+- Enhanced `/api/tmdb/search/route.ts` with additional TMDB data:
+  - Added `created_by` (show creators) for TV shows
+  - Added `networks` (broadcasting networks with logos) for TV shows
+  - Added `production_countries` with name and code
+  - Added `homepage` URL
+  - Added `imdb_id` via `external_ids` append_to_response
+  - Added full `crew` array from TMDB credits
+  - Separated `directors`, `writers`, `producers` from crew
+  - Added `externalUrls` from external_ids (IMDb, TVDB, Wikidata, Facebook, Instagram, Twitter)
+  - Added `runtime` (episode_run_time for TV, runtime for movies)
+  - Added `spokenLanguages`
+  - Upgraded `productionCompanies` to include logo paths and origin country
+- Enhanced `MediaDetail.tsx` with rich metadata panels:
+  - Added `CriticRatingBadge` component (green/red tomato-style with Award icon)
+  - Added Director section with horizontal scrollable headshot cards (Clapperboard icon)
+  - Added Writer section with horizontal scrollable headshot cards (PenTool icon)
+  - Added Technical Info panel (Cpu icon) showing: resolution, video codec with HDR badge, frame rate, bit depth, audio codec with channel layout, language, container format, file size, audio track count, subtitle count
+  - Added External Links section (Link2 icon) with styled link buttons for IMDb, TMDB, TVDB, Wikidata, social media, and official site
+  - Added Status badge with color coding (Continuing=green, Ended=red, Released=sky, In Production=amber, etc.)
+  - Added Runtime badge in quick info bar with Clock icon
+  - Added Season/Episode summary for TV shows (e.g. "5 Seasons • 62 Episodes")
+  - Added Air days display for Series (e.g. "Sunday at 21:00")
+  - Added Creators/Showrunner section for TV shows (mythic-colored names)
+  - Added Networks section for TV shows (with logo images)
+  - Added Production info: studios, production companies with logos, production countries with map pin icon
+  - Added cumulative runtime badge for collections
+  - Enhanced episode cards with community rating display
+  - Added InfoRow helper component for clean key-value display in technical info
+  - All new sections include loading skeletons
+- Enhanced `VideoPlayer.tsx` browsable container view:
+  - Added season count badge for TV shows in hero header
+  - Added film count badge for collections in hero header
+  - Added duration display below genre in hero header
+  - Changed badge layout to flex-wrap for better responsiveness
+
+Stage Summary:
+- Jellyfin details API now returns critic ratings, crew (directors/writers/producers), status, air days, provider IDs, external URLs, media stream info (codec, resolution, HDR, channels, subtitles, file size), runtime in readable format, and cumulative runtime for collections
+- TMDB API now returns show creators, networks, production countries, homepage, IMDb ID, full crew breakdown (directors/writers/producers), external URLs, and runtime
+- MediaDetail component now shows: critics rating badge, directors/writers with headshots, technical info panel, external links, status badge, runtime, season/episode summary, air schedule, creator credits, network logos, studio/production company info, and country of origin
+- Browsable container view (Series, Collections) shows season/film count badges in hero header
+- All new sections have loading skeletons while data is being fetched
+
+---
+Task ID: 4
+Agent: podcast-tvfixer
+Task: Fix podcast library detection and TV show season display
+
+Work Log:
+- Investigated Jellyfin server library structure via /Users/{userId}/Views API: found 7 libraries (Audiobooks, Collections, Movies, Music, Playlists, Podcasts, TV Shows). Podcasts library has CollectionType='music' (not 'podcasts') with 60 podcast shows stored as MusicAlbum type
+- Fixed VideoPlayer.tsx: Moved isBrowsableContainer check BEFORE isAudio check to prevent podcast shows (MusicAlbum with hasChildren) from being routed to AudioPlayerView instead of browsable container view. Added `(currentMedia.type === 'PODCAST' && currentMedia.itemType !== 'Audio')` to isBrowsableContainer condition. Updated isAudio to exclude browsable containers: `isAudioType(currentMedia.type) && !isBrowsableContainer`
+- Fixed VideoPlayer.tsx useEffect for audio queue population: Added early return for browsable containers (podcast shows, etc.) to prevent them from being added to the audio playback queue
+- Fixed VideoPlayer.tsx useEffect for playback start: Added PODCAST browsable check and updated isAudio calculation to match main render logic
+- Fixed duplicate `const isAudio` declaration in VideoPlayer.tsx main render scope (was declared twice at lines 1089 and 1108)
+- Added MusicAlbum children fetching to details API: `/api/jellyfin/details/[itemId]/route.ts` now fetches podcast episodes (Audio type children) for MusicAlbum items, returning `podcastEpisodes` array and `podcastTotalCount`. Supports pagination via `episodeOffset` and `episodeLimit` query params
+- Added podcast episode support in MediaDetail.tsx: New `PodcastEpisodeCard` component with thumbnail, play overlay, duration, and premiere date. New `isPodcast` flag. Podcast episode list section with loading skeletons and empty state. `handlePlayPodcastEpisode` callback that creates a PODCAST type media item with itemType 'Audio'
+- Added visual indicators on TV Show cards: MediaCard.tsx now shows "X Seasons" for Series items, "X Episodes" for Podcast items, instead of generic "X items"
+- Updated handlePlay in page.tsx: Changed from doing nothing for folder items to opening the browsable container view (`setCurrentMedia(item)`) so that clicking TV Shows and Podcasts always navigates properly
+- Optimized podcast category API: Changed IncludeItemTypes from `Series,MusicAlbum,LiveTvChannel,LiveTvProgram` to just `MusicAlbum` for the Podcasts library, reducing response time from ~10s to ~2s
+- All lint checks pass with zero errors
+
+Stage Summary:
+- Podcast shows now open as browsable containers showing episode list instead of trying to play as audio
+- Podcast episodes can be played individually from the browsable container view
+- TV Show cards show "X Seasons" badge instead of "X items"
+- Podcast cards show "X Episodes" badge instead of "X items"
+- Podcast category API is now ~5x faster (2s vs 10s) by querying only MusicAlbum type
+- Details API supports MusicAlbum items for podcast episode fetching with pagination
+- handlePlay properly opens browsable container view for all folder items (TV Shows, Podcasts, Collections)
+
+---
+Task ID: 7
+Agent: Main Agent
+Task: Comprehensive fix for audio/video playback, rich metadata, TV shows seasons, podcast library, and UI enhancements
+
+Work Log:
+- Assessed current project state: read all key files (VideoPlayer, MediaDetail, stream API, details API, TMDB API, store, page, etc.)
+- Delegated Task 2 (video/audio player fix) to full-stack-developer subagent: Installed hls.js, created useHlsVideoPlayer hook with automatic fallback (direct → HLS → transcode), changed AudioPlayerView from `<video>` to `<audio>` element, added error recovery overlays, updated stream API with streamFormat parameter
+- Delegated Task 3 (rich metadata) to full-stack-developer subagent: Enhanced Jellyfin details API with crew/critic ratings/status/media streams, enhanced TMDB API with creators/networks/external URLs, added Director/Writer/Technical Info/External Links sections to MediaDetail, added status badges/runtime/season summaries
+- Delegated Task 4 (podcasts/TV shows) to full-stack-developer subagent: Fixed podcast library (uses MusicAlbum type in music CollectionType library), moved isBrowsableContainer before isAudio check in VideoPlayer, added podcast episode cards, added "X Seasons"/"X Episodes" badges on cards, optimized podcast API query speed
+- Verified all changes with ESLint: zero errors
+- Browser verification: Home page renders with hero banner, all categories (Movies, TV Shows, Music, Podcasts, Audiobooks, Collections), rich metadata shows in video player (ratings, genres, studios, technical info, external links), video streams load with 206 partial content responses, TMDB enrichment works, no console errors
+
+Stage Summary:
+- Video player supports HLS streams via hls.js with automatic fallback chain
+- Audio player uses proper `<audio>` element instead of `<video>` for audio content
+- Rich metadata: ratings, synopses, cast, crew (directors/writers/producers), technical info (codec, resolution, HDR, channels), external links (IMDb, TMDB), status, runtime, season/episode counts
+- TV Shows properly show season/episode browser with podcast episode support
+- Podcast library is populated and functional with episode listing
+- All lint checks pass with zero errors, browser verification confirms no runtime errors
