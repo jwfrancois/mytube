@@ -722,3 +722,37 @@ Stage Summary:
 - All video content uses HLS chunked transfer (no more full-file proxying)
 - Lint passes cleanly, dev server compiles without errors
 - Verified with Agent Browser: video plays with currentTime advancing, readyState=4
+---
+Task ID: 9
+Agent: Main Agent
+Task: Add Live TV feature with free streaming channels from multiple sources
+
+Work Log:
+- Created `/src/lib/livetv-channels.ts` — Channel database with 32 curated free live TV channels across 12 categories (news, entertainment, movies, sports, music, kids, lifestyle, science, comedy, truecrime, gaming, international), plus 4 external service entries (Xumo Play, Samsung TV Plus, Tubi, Plex Channels)
+- Created `/src/app/api/livetv/channels/route.ts` — GET endpoint returning all channels (built-in + Jellyfin Live TV if connected), with category filter, search, and by-category grouping
+- Created `/src/app/api/livetv/stream/[channelId]/route.ts` — Stream proxy that fetches M3U8 playlists, rewrites segment URLs through our proxy to avoid CORS issues, and supports Jellyfin Live TV channels
+- Created `/src/app/api/livetv/proxy-segment/route.ts` — Segment proxy for HLS segments from external live TV streams, also handles nested M3U8 playlists
+- Created `/src/app/api/livetv/epg/route.ts` — EPG endpoint returning mock program guide data for built-in channels and Jellyfin EPG if available
+- Created `/src/components/LiveTVGuide.tsx` — Full Live TV guide with category tabs, search, channel grid, favorites (persisted to localStorage), EPG side panel, and external services section
+- Created `/src/components/LiveTVSection.tsx` — Home page horizontal shelf showing featured live channels with quick-access external service buttons
+- Updated `/src/store/useAppStore.ts` — Added 'LIVETV' to MediaType union, added showLiveTV/setShowLiveTV state
+- Updated `/src/components/Sidebar.tsx` — Added "Live TV" entry with Radio icon in main navigation, toggles Live TV guide view
+- Updated `/src/app/page.tsx` — Added LiveTVGuide full-screen view, LiveTVSection in home page middleSlot, imported Radio icon
+- Updated `/src/components/VideoPlayer.tsx`:
+  - Added `playDirectM3U8` function to useHlsVideoPlayer hook for playing direct M3U8 URLs (Live TV streams)
+  - Added Live TV type handling: when currentMedia.type === 'LIVETV', plays through our stream proxy
+  - Added LIVE badge overlay on video when playing live TV
+  - Added Live TV-specific loading message ("Connecting to live stream...")
+  - Added Radio icon and LIVE badge in channel info section
+  - Added handleBack navigation back to Live TV guide after watching a channel
+  - Fixed React anti-pattern: moved destroyHls() from render-time to effect-time
+  - Removed mediaChangedRef to comply with React 19 lint rule about ref updates during render
+
+Stage Summary:
+- Live TV feature fully functional with 32 free channels across 12 categories
+- External services (Xumo, Samsung TV Plus, Tubi, Plex) shown with links to their web apps
+- Channel favorites persist to localStorage
+- EPG schedule panel for selected channels
+- Video player supports Live TV M3U8 streams with low-latency HLS configuration
+- All lint checks pass cleanly
+- Agent browser verified: Live TV section on home page, full guide with category filters, channel playback, no errors

@@ -21,6 +21,7 @@ import {
   FolderOpen,
   Sparkles,
   Network,
+  Radio,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -105,8 +106,14 @@ export function Sidebar() {
     loadLibraries()
   }, [jellyfinConnected])
 
+  const showLiveTV = useAppStore(s => s.showLiveTV)
+  const setShowLiveTV = useAppStore(s => s.setShowLiveTV)
+
   const mainItems: SidebarItem[] = [
-    { icon: Home, label: 'Home', category: 'ALL', active: activeCategory === 'ALL' && !showKnowledgeGraph },
+    { icon: Home, label: 'Home', category: 'ALL', active: activeCategory === 'ALL' && !showKnowledgeGraph && !showLiveTV },
+    { icon: Radio, label: 'Live TV', category: 'LIVETV', active: showLiveTV, action: () => {
+      setShowLiveTV(!showLiveTV)
+    }},
     { icon: Sparkles, label: 'AI Concierge', category: 'ALL', active: false },
     { icon: Flame, label: 'Trending', category: 'ALL', active: false },
     { icon: Compass, label: 'Explore', category: 'ALL', active: false },
@@ -148,15 +155,24 @@ export function Sidebar() {
       return
     }
 
+    // If Live TV, toggle the Live TV view
+    if (item.label === 'Live TV') {
+      setShowLiveTV(!showLiveTV)
+      return
+    }
+
     if (item.category) {
       setCurrentMedia(null)
       setSearchQuery('')
       setIsSearching(false)
       setActiveCategory(item.category)
 
-      // Close Knowledge Graph when navigating to any category
+      // Close Knowledge Graph and Live TV when navigating to any category
       if (showKnowledgeGraph) {
         setShowKnowledgeGraph(false)
+      }
+      if (showLiveTV) {
+        setShowLiveTV(false)
       }
 
       // If AI Concierge, scroll to the concierge panel

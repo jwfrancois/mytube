@@ -17,9 +17,11 @@ import { SemanticDiscovery } from '@/components/SemanticDiscovery'
 import { SmartCollections } from '@/components/SmartCollections'
 import { LivingHomeScreen } from '@/components/LivingHomeScreen'
 import { MediaKnowledgeGraph } from '@/components/MediaKnowledgeGraph'
+import { LiveTVSection } from '@/components/LiveTVSection'
+import { LiveTVGuide } from '@/components/LiveTVGuide'
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
-import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers } from 'lucide-react'
+import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers, Radio } from 'lucide-react'
 
 function isAudioType(type: string): boolean {
   return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
@@ -44,6 +46,8 @@ export default function Home() {
     setCurrentMedia,
     showKnowledgeGraph,
     setShowKnowledgeGraph,
+    showLiveTV,
+    setShowLiveTV,
   } = useAppStore()
 
   const {
@@ -311,6 +315,16 @@ export default function Home() {
       )
     }
 
+    // Live TV full-screen view
+    if (showLiveTV) {
+      return (
+        <LiveTVGuide
+          onPlay={handlePlay}
+          onBack={() => setShowLiveTV(false)}
+        />
+      )
+    }
+
     // During SSR/hydration, render a consistent loading state to prevent mismatch.
     // After mount, localStorage data (watchHistory/watchLater) is available,
     // so we can render the full sections-based UI.
@@ -368,6 +382,7 @@ export default function Home() {
           topSlot={<AIConcierge onPlay={handlePlay} />}
           middleSlot={(
             <>
+              <LiveTVSection onPlay={handlePlay} onViewAll={() => setShowLiveTV(true)} />
               <AIRadioStations onPlay={handlePlay} />
               <SemanticDiscovery onPlay={handlePlay} />
               <SmartCollections onPlay={handlePlay} />

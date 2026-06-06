@@ -39,6 +39,7 @@ import {
   BookOpen,
   X,
   RefreshCw,
+  Radio,
 } from 'lucide-react'
 import { MediaDetail } from '@/components/MediaDetail'
 import { AudioVisualizer } from '@/components/AudioVisualizer'
@@ -452,6 +453,80 @@ function useHlsVideoPlayer(
     setCurrentSrc(null)
   }, [destroyHls])
 
+  // Play a direct M3U8 URL (for Live TV channels)
+  const playDirectM3U8 = useCallback(async (m3u8Url: string) => {
+    const video = videoRef.current
+    if (!video) return
+
+    destroyHls()
+    setVideoError(null)
+    setVideoLoading(true)
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current)
+    loadingTimeoutRef.current = setTimeout(() => {
+      setVideoLoading(false)
+    }, 15000)
+
+    try {
+      const hlsModule = await loadHls()
+      if (!hlsModule || !hlsModule.isSupported()) {
+        // Try native HLS (Safari)
+        video.src = m3u8Url
+        setCurrentSrc(m3u8Url)
+        video.load()
+        video.play().catch(() => {})
+        return
+      }
+
+      const hls = new hlsModule({
+        enableWorker: true,
+        lowLatencyMode: true,
+        liveSyncDurationCount: 3,
+        liveMaxLatencyDurationCount: 6,
+        liveDurationInfinity: true,
+        manifestLoadingTimeOut: 30000,
+        manifestLoadingMaxRetry: 4,
+        levelLoadingTimeOut: 30000,
+        levelLoadingMaxRetry: 4,
+        fragLoadingTimeOut: 30000,
+        fragLoadingMaxRetry: 4,
+      })
+      hlsRef.current = hls
+
+      hls.loadSource(m3u8Url)
+      hls.attachMedia(video)
+
+      hls.on(hlsModule.Events.MANIFEST_PARSED, () => {
+        setVideoLoading(false)
+        video.play().catch(() => {})
+      })
+
+      hls.on(hlsModule.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          switch (data.type) {
+            case hlsModule.ErrorTypes.NETWORK_ERROR:
+              hls.startLoad()
+              break
+            case hlsModule.ErrorTypes.MEDIA_ERROR:
+              hls.recoverMediaError()
+              break
+            default:
+              destroyHls()
+              setVideoError('This live stream is currently unavailable. The channel may be offline.')
+              setVideoLoading(false)
+              break
+          }
+        }
+      })
+
+      setCurrentSrc(m3u8Url)
+      setStrategy('hls')
+    } catch (err) {
+      console.error('Live TV M3U8 playback failed:', err)
+      setVideoError('Failed to play live stream.')
+      setVideoLoading(false)
+    }
+  }, [videoRef, destroyHls])
+
   // Manual retry (user clicks retry button)
   const manualRetry = useCallback(() => {
     retryCountRef.current = 0
@@ -492,6 +567,7 @@ function useHlsVideoPlayer(
     trySpecificStrategy,
     destroyHls,
     startPlayback: useCallback(() => tryStrategy('hls'), [tryStrategy]),
+    playDirectM3U8,
   }
 }
 
@@ -946,6 +1022,7 @@ export function VideoPlayer() {
     trySpecificStrategy,
     destroyHls,
     startPlayback,
+    playDirectM3U8,
   } = useHlsVideoPlayer(
     videoRef,
     currentMedia?.isJellyfin ? currentMedia.jellyfinId : undefined,
@@ -961,14 +1038,12 @@ export function VideoPlayer() {
   if (prevMediaIdRef.current !== currentMedia?.id) {
     prevMediaIdRef.current = currentMedia?.id
     if (currentMedia) {
+      // Reset local UI state during render (state setters are OK during render)
+      // Actual HLS cleanup and playback restart happen in the useEffect below
       setVideoError(null)
       setLiked(false)
       setDisliked(false)
       setIsVideoPlaying(false)
-      // Immediately destroy hls instance to stop any ongoing playback
-      destroyHls()
-      // Full state reset (videoLoading, strategy, retryCount, currentSrc)
-      // happens in the startPlayback useEffect to avoid double-reset
     }
   }
 
@@ -987,11 +1062,15 @@ export function VideoPlayer() {
     video.playbackRate = playbackSpeed
   }, [volume, playbackSpeed])
 
-  // Reset and start playback when a new Jellyfin video is selected
+  // Reset and start playback when a new video is selected
   useEffect(() => {
     if (!currentMedia) return
 
-    // Reset video player state for new media (moved from render-time to avoid double-reset)
+    // Always destroy any existing hls instance before starting new playback
+    // This is now done in the effect (not during render) to avoid side effects during render
+    destroyHls()
+
+    // Reset video player state for new media
     resetForNewMedia()
 
     const isJellyfin = currentMedia.isJellyfin
@@ -1007,11 +1086,25 @@ export function VideoPlayer() {
     )
     const isAudio = isAudioType(currentMedia.type) && !isBrowsableContainer
 
+    // Live TV — play the M3U8 stream directly
+    if (currentMedia.type === 'LIVETV') {
+      const streamUrl = currentMedia.videoUrl
+      if (streamUrl) {
+        // Use our Live TV stream proxy to avoid CORS issues
+        const proxyUrl = `/api/livetv/stream/${encodeURIComponent(currentMedia.id)}`
+        playDirectM3U8(proxyUrl)
+      } else {
+        setVideoError('No stream URL available for this channel.')
+        setVideoLoading(false)
+      }
+      return
+    }
+
     // Only start playback for Jellyfin video content (not audio, not browsable containers)
     if (isJellyfin && !isAudio && !isBrowsableContainer && currentMedia.jellyfinId) {
       startPlayback()
     }
-  }, [currentMedia?.id, startPlayback, resetForNewMedia])
+  }, [currentMedia?.id, startPlayback, resetForNewMedia, playDirectM3U8, destroyHls])
 
   // Populate audio queue when playing audio content from an album
   useEffect(() => {
@@ -1183,6 +1276,10 @@ export function VideoPlayer() {
     destroyHls()
     setCurrentMedia(null)
     queuePopulatedRef.current = null
+    // If we were playing Live TV, go back to Live TV guide
+    if (currentMedia?.type === 'LIVETV') {
+      useAppStore.getState().setShowLiveTV(true)
+    }
   }
 
   // ─── Browsable Container View (Series, Collections, Albums, Podcasts) ───
@@ -1283,11 +1380,14 @@ export function VideoPlayer() {
     )
   }
 
-  // ─── Video Player View (Movies/Episodes) ───
+  // ─── Video Player View (Movies/Episodes/Live TV) ───
+  const isLiveTV = currentMedia.type === 'LIVETV'
+
   const typeColor = {
     MOVIE: 'bg-red-500/10 text-red-500',
     TV_SHOW: 'bg-emerald-500/10 text-emerald-500',
     MUSIC: 'bg-purple-500/10 text-purple-500',
+    LIVETV: 'bg-red-500/10 text-red-400',
   }[currentMedia.type] || ''
 
   // Strategy label for the retry button
@@ -1310,8 +1410,8 @@ export function VideoPlayer() {
 
           {/* Video Player */}
           <div className="relative aspect-video rounded-xl overflow-hidden bg-black">
-            {isJellyfin ? (
-              /* Jellyfin video: managed by useHlsVideoPlayer hook */
+            {isJellyfin || isLiveTV ? (
+              /* Jellyfin / Live TV video: managed by useHlsVideoPlayer hook */
               <video
                 ref={videoRef}
                 controls
@@ -1347,13 +1447,23 @@ export function VideoPlayer() {
               />
             )}
 
+            {/* Live Badge for Live TV */}
+            {isLiveTV && isVideoPlaying && (
+              <div className="absolute top-3 left-3">
+                <Badge className="bg-red-500 text-white gap-1 shadow-lg">
+                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                  LIVE
+                </Badge>
+              </div>
+            )}
+
             {/* Loading overlay */}
             {videoLoading && !videoError && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none">
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 className="h-10 w-10 text-white animate-spin" />
                   <span className="text-white text-sm">
-                    {strategy === 'hls' ? 'Loading HLS stream...' : strategy === 'transcode' ? 'Transcoding video...' : 'Loading video...'}
+                    {isLiveTV ? 'Connecting to live stream...' : strategy === 'hls' ? 'Loading HLS stream...' : strategy === 'transcode' ? 'Transcoding video...' : 'Loading video...'}
                   </span>
                 </div>
               </div>
@@ -1530,8 +1640,14 @@ export function VideoPlayer() {
                     </>
                   )}
                   <Badge variant="secondary" className={cn("text-xs ml-1", typeColor)}>
-                    {currentMedia.type === 'TV_SHOW' ? 'TV Show' : currentMedia.type.charAt(0) + currentMedia.type.slice(1).toLowerCase()}
+                    {isLiveTV ? 'Live TV' : currentMedia.type === 'TV_SHOW' ? 'TV Show' : currentMedia.type.charAt(0) + currentMedia.type.slice(1).toLowerCase()}
                   </Badge>
+                  {isLiveTV && (
+                    <Badge className="text-xs bg-red-500 text-white gap-1">
+                      <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
+                      LIVE
+                    </Badge>
+                  )}
                   {currentMedia.genre && (
                     <Badge variant="outline" className="text-xs">
                       {currentMedia.genre}
@@ -1586,21 +1702,21 @@ export function VideoPlayer() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Avatar className="h-10 w-10">
-                  <AvatarFallback className={cn("bg-muted", isJellyfin && "bg-emerald-500/10 text-emerald-500")}>
-                    {isJellyfin ? <Server className="h-5 w-5" /> : (currentMedia.channel?.charAt(0) || currentMedia.artist?.charAt(0) || 'C')}
+                  <AvatarFallback className={cn("bg-muted", isJellyfin && "bg-emerald-500/10 text-emerald-500", isLiveTV && "bg-red-500/10 text-red-400")}>
+                    {isLiveTV ? <Radio className="h-5 w-5" /> : isJellyfin ? <Server className="h-5 w-5" /> : (currentMedia.channel?.charAt(0) || currentMedia.artist?.charAt(0) || 'C')}
                   </AvatarFallback>
                 </Avatar>
                 <div>
                   <p className="font-medium text-sm">{currentMedia.channel || currentMedia.artist}</p>
                   <p className="text-xs text-muted-foreground">
-                    {isJellyfin ? 'Jellyfin NAS' : currentMedia.artist}
+                    {isLiveTV ? 'Live TV' : isJellyfin ? 'Jellyfin NAS' : currentMedia.artist}
                   </p>
                 </div>
               </div>
-              {isJellyfin && (
+              {(isJellyfin || isLiveTV) && (
                 <Badge variant="outline" className="gap-1">
-                  <Server className="h-3 w-3" />
-                  NAS
+                  {isLiveTV ? <Radio className="h-3 w-3" /> : <Server className="h-3 w-3" />}
+                  {isLiveTV ? 'LIVE' : 'NAS'}
                 </Badge>
               )}
             </div>

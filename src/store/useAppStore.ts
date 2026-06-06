@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'PODCAST' | 'AUDIOBOOK' | 'COLLECTION' | 'JELLYFIN'
+export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'PODCAST' | 'AUDIOBOOK' | 'COLLECTION' | 'JELLYFIN' | 'LIVETV'
 export type SortType = 'recent' | 'popular'
 
 export interface MediaItem {
@@ -123,6 +123,10 @@ interface AppState {
   // Knowledge Graph view
   showKnowledgeGraph: boolean
   setShowKnowledgeGraph: (show: boolean) => void
+
+  // Live TV view
+  showLiveTV: boolean
+  setShowLiveTV: (show: boolean) => void
 
   // Persistent Audio Track (decoupled from currentMedia for background playback)
   audioTrack: MediaItem | null
@@ -323,4 +327,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Knowledge Graph
   showKnowledgeGraph: false,
   setShowKnowledgeGraph: (show) => set({ showKnowledgeGraph: show }),
+
+  // Live TV
+  showLiveTV: false,
+  setShowLiveTV: (show) => set({ showLiveTV: show }),
 }))
