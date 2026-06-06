@@ -26,6 +26,7 @@ export default function Home() {
     searchQuery,
     isSearching,
     currentMedia,
+    audioTrack,
     mediaItems,
     setMediaItems,
     setIsLoading,
@@ -59,7 +60,7 @@ export default function Home() {
   const jellyfinHomeLoadedRef = useRef(false)
 
   // Check if the current media is audio type (for the persistent bar)
-  const isAudioPlaying = currentMedia ? isAudioType(currentMedia.type) : false
+  const isAudioPlaying = !!(audioTrack || (currentMedia && isAudioType(currentMedia.type)))
 
   const fetchMedia = useCallback(async () => {
     setIsLoading(true)

@@ -64,7 +64,7 @@ function HorizontalShelf({
   if (section.items.length === 0) return null
 
   return (
-    <section className="mb-8 animate-fade-in-up">
+    <section className="mb-8">
       {/* Netflix-style section header */}
       <div className="flex items-center justify-between mb-3 px-6 group/header">
         <div className="flex items-center gap-2.5">
@@ -90,7 +90,7 @@ function HorizontalShelf({
         <div className="px-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {section.items.map((item, idx) => (
             <MediaCard
-              key={`${item.id}-${idx}`}
+              key={`${section.id}-${item.id}-${idx}`}
               item={item}
               onWatchLater={onWatchLater}
               onRemoveWatchLater={onRemoveWatchLater}
@@ -122,7 +122,7 @@ function HorizontalShelf({
             onLoad={checkScroll}
           >
             {section.items.map((item, idx) => (
-              <div key={`${item.id}-${idx}`} className="shrink-0 w-[200px] sm:w-[220px] lg:w-[240px] row-item">
+              <div key={`${section.id}-${item.id}-${idx}`} className="shrink-0 w-[200px] sm:w-[220px] lg:w-[240px] row-item">
                 <MediaCard
                   item={item}
                   onWatchLater={onWatchLater}
@@ -260,8 +260,8 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
         )}
 
         {/* Horizontal shelves */}
-        {sections.map((section, index) => (
-          <div key={section.id} style={{ animationDelay: `${index * 80}ms` }}>
+        {sections.map((section) => (
+          <div key={section.id}>
             <HorizontalShelf
               section={section}
               onWatchLater={onWatchLater}

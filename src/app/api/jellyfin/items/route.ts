@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
         channel: item.OfficialRating || server.name,
         isJellyfin: true,
         jellyfinId: item.Id,
+        mediaSourceId: item.MediaSources?.[0]?.Id || '',
         itemType: item.Type,
         parentId: item.ParentId,
         hasChildren,

@@ -48,10 +48,6 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-function isAudioType(type: string): boolean {
-  return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
-}
-
 // Map of icon components by type
 const typeIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   PODCAST: Podcast,
@@ -119,7 +115,7 @@ function QueueItem({
 
 export function AudioPlayerBar() {
   const {
-    currentMedia,
+    audioTrack,
     isPlaying,
     setIsPlaying,
     audioQueue,
@@ -136,29 +132,23 @@ export function AudioPlayerBar() {
     repeatMode,
     setRepeatMode,
     setCurrentMedia,
+    setAudioCurrentTime,
+    setAudioDuration,
+    setAudioElement,
+    stopAudio,
+    playbackSpeed,
   } = useAppStore()
 
   const audioRef = useRef<HTMLAudioElement>(null)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
   const [seeking, setSeeking] = useState(false)
   const [queueOpen, setQueueOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [audioError, setAudioError] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState(0)
-  // Store the audio element in state for passing to child components
-  // (only set once, when the ref becomes available)
-  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null)
+  const [audioElementState, setAudioElementState] = useState<HTMLAudioElement | null>(null)
 
   // Determine if we should show the bar
-  const isAudio = currentMedia ? isAudioType(currentMedia.type) : false
-
-  // Sync the audio element ref to state (for passing to SoundSettings)
-  useEffect(() => {
-    if (audioRef.current && audioRef.current !== audioElement) {
-      setAudioElement(audioRef.current)
-    }
-  }, [audioElement])
+  const showBar = !!audioTrack
 
   // Build the audio URL
   const getAudioSrc = useCallback((media: MediaItem) => {
@@ -173,33 +163,44 @@ export function AudioPlayerBar() {
     return media.videoUrl
   }, [])
 
-  // Sync audio element with current media
+  // Register the audio element in the store (for AudioPlayerView / AudioVisualizer / SoundSettings)
+  useEffect(() => {
+    if (audioRef.current && audioRef.current !== audioElementState) {
+      setAudioElementState(audioRef.current)
+      setAudioElement(audioRef.current)
+    }
+  }, [audioElementState, setAudioElement])
+
+  // Sync audio element with current audio track
   useEffect(() => {
     const el = audioRef.current
-    if (!el || !currentMedia || !isAudio) return
+    if (!el || !audioTrack) return
 
-    const src = getAudioSrc(currentMedia)
+    const src = getAudioSrc(audioTrack)
     if (el.src !== src) {
+      setAudioError(null)
+      setRetryCount(0)
       el.src = src
       el.volume = volume
+      el.playbackRate = playbackSpeed
       el.load()
     }
 
     if (isPlaying) {
       el.play().catch(() => {})
     }
-  }, [currentMedia, isAudio, getAudioSrc, isPlaying, volume])
+  }, [audioTrack, getAudioSrc])
 
   // Play/pause sync
   useEffect(() => {
     const el = audioRef.current
-    if (!el || !currentMedia || !isAudio) return
+    if (!el || !audioTrack) return
     if (isPlaying) {
       el.play().catch(() => {})
     } else {
       el.pause()
     }
-  }, [isPlaying])
+  }, [isPlaying, audioTrack])
 
   // Volume sync
   useEffect(() => {
@@ -207,6 +208,13 @@ export function AudioPlayerBar() {
     if (!el) return
     el.volume = volume
   }, [volume])
+
+  // Playback speed sync
+  useEffect(() => {
+    const el = audioRef.current
+    if (!el) return
+    el.playbackRate = playbackSpeed
+  }, [playbackSpeed])
 
   // Audio error handler with auto-retry
   const handleAudioError = useCallback(() => {
@@ -239,21 +247,27 @@ export function AudioPlayerBar() {
     setRetryCount(0)
   }, [])
 
-  // Time update handler
+  // Time update handler — sync to store for AudioPlayerView
   useEffect(() => {
     const el = audioRef.current
     if (!el) return
 
     const onTimeUpdate = () => {
       if (!seeking) {
-        setCurrentTime(el.currentTime)
+        setAudioCurrentTime(el.currentTime)
       }
     }
     const onLoadedMetadata = () => {
-      setDuration(el.duration)
+      setAudioDuration(el.duration)
     }
     const onEnded = () => {
-      playNext()
+      // Handle repeat-one: restart the same track
+      if (useAppStore.getState().repeatMode === 'one') {
+        el.currentTime = 0
+        el.play().catch(() => {})
+      } else {
+        playNext()
+      }
     }
     const onError = () => handleAudioError()
     const onCanPlay = () => handleAudioCanPlay()
@@ -273,17 +287,17 @@ export function AudioPlayerBar() {
       el.removeEventListener('error', onError)
       el.removeEventListener('canplay', onCanPlay)
     }
-  }, [seeking, playNext, handleAudioError, handleAudioCanPlay])
+  }, [seeking, playNext, handleAudioError, handleAudioCanPlay, setAudioCurrentTime, setAudioDuration])
 
   // Seek handler
   const handleSeek = useCallback(([value]: number[]) => {
     const el = audioRef.current
     if (el) {
       el.currentTime = value
-      setCurrentTime(value)
+      setAudioCurrentTime(value)
     }
     setSeeking(false)
-  }, [])
+  }, [setAudioCurrentTime])
 
   // Play/Pause
   const togglePlay = useCallback(() => {
@@ -302,21 +316,46 @@ export function AudioPlayerBar() {
     setAudioQueueIndex(index)
     const item = audioQueue[index]
     if (item) {
-      setCurrentMedia(item)
+      // Update audioTrack (and currentMedia if showing audio view)
+      useAppStore.getState().setAudioTrack(item)
+      const { currentMedia } = useAppStore.getState()
+      if (currentMedia && ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(currentMedia.type)) {
+        setCurrentMedia(item)
+      }
     }
   }, [audioQueue, setAudioQueueIndex, setCurrentMedia])
 
+  // Read time/duration from the store (synced by the event listeners above)
+  const currentTime = useAppStore.getState().audioCurrentTime
+  const duration = useAppStore.getState().audioDuration
+
+  // Use store subscriptions for reactive updates
+  const [reactiveTime, setReactiveTime] = useState(0)
+  const [reactiveDuration, setReactiveDuration] = useState(0)
+
+  useEffect(() => {
+    const unsub1 = useAppStore.subscribe(
+      (s) => s.audioCurrentTime,
+      (time) => setReactiveTime(time)
+    )
+    const unsub2 = useAppStore.subscribe(
+      (s) => s.audioDuration,
+      (d) => setReactiveDuration(d)
+    )
+    return () => { unsub1(); unsub2() }
+  }, [])
+
   const VolumeIconComponent = volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
 
-  if (!isAudio || !currentMedia) return null
+  if (!showBar) return null
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+  const progress = reactiveDuration > 0 ? (reactiveTime / reactiveDuration) * 100 : 0
 
   const RepeatIconComponent = repeatMode === 'one' ? Repeat1 : Repeat
 
   return (
     <>
-      {/* Hidden audio element for continuous playback */}
+      {/* Hidden audio element — THE SINGLE SOURCE OF TRUTH for audio playback */}
       <audio ref={audioRef} preload="auto" />
 
       {/* Player Bar */}
@@ -351,12 +390,12 @@ export function AudioPlayerBar() {
           <div className="absolute top-0 left-0 right-0 h-1 bg-muted/50 cursor-pointer group"
             onClick={(e) => {
               const el = audioRef.current
-              if (!el || duration <= 0) return
+              if (!el || reactiveDuration <= 0) return
               const rect = e.currentTarget.getBoundingClientRect()
               const x = e.clientX - rect.left
               const pct = x / rect.width
-              el.currentTime = pct * duration
-              setCurrentTime(pct * duration)
+              el.currentTime = pct * reactiveDuration
+              setAudioCurrentTime(pct * reactiveDuration)
             }}
           >
             <div
@@ -377,10 +416,10 @@ export function AudioPlayerBar() {
                   )}
                   style={{ animationDuration: '3s' }}
                 >
-                  {currentMedia.thumbnail ? (
+                  {audioTrack.thumbnail ? (
                     <img
-                      src={currentMedia.thumbnail}
-                      alt={currentMedia.title}
+                      src={audioTrack.thumbnail}
+                      alt={audioTrack.title}
                       className="w-full h-full object-cover"
                     />
                   ) : (
@@ -397,10 +436,10 @@ export function AudioPlayerBar() {
 
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate max-w-[200px] sm:max-w-none">
-                  {currentMedia.title}
+                  {audioTrack.title}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
-                  {currentMedia.artist || currentMedia.channel || ''}
+                  {audioTrack.artist || audioTrack.channel || ''}
                 </p>
               </div>
             </div>
@@ -462,17 +501,17 @@ export function AudioPlayerBar() {
 
               {/* Time display (hidden on very small screens) */}
               <div className="hidden sm:flex items-center gap-2 w-full max-w-md text-xs text-muted-foreground">
-                <span className="w-10 text-right tabular-nums">{formatTime(currentTime)}</span>
+                <span className="w-10 text-right tabular-nums">{formatTime(reactiveTime)}</span>
                 <Slider
-                  value={[currentTime]}
+                  value={[reactiveTime]}
                   min={0}
-                  max={duration || 100}
+                  max={reactiveDuration || 100}
                   step={0.1}
                   onPointerDown={() => setSeeking(true)}
                   onValueChange={handleSeek}
                   className="flex-1"
                 />
-                <span className="w-10 tabular-nums">{formatTime(duration)}</span>
+                <span className="w-10 tabular-nums">{formatTime(reactiveDuration)}</span>
               </div>
             </div>
 
@@ -510,7 +549,7 @@ export function AudioPlayerBar() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" side="top" align="end">
-                  <SoundSettings audioElement={audioElement} compact />
+                  <SoundSettings audioElement={audioElementState} compact />
                 </PopoverContent>
               </Popover>
 
@@ -577,6 +616,16 @@ export function AudioPlayerBar() {
                   </ScrollArea>
                 </DrawerContent>
               </Drawer>
+
+              {/* Close button — stops audio entirely */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={stopAudio}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>

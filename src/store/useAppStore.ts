@@ -39,6 +39,10 @@ interface JellyfinServerInfo {
   lastConnected: string | null
 }
 
+function isAudioType(type: string): boolean {
+  return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
+}
+
 interface AppState {
   // Sidebar
   sidebarOpen: boolean
@@ -115,6 +119,17 @@ interface AppState {
   setShuffleEnabled: (enabled: boolean) => void
   repeatMode: 'none' | 'all' | 'one'
   setRepeatMode: (mode: 'none' | 'all' | 'one') => void
+
+  // Persistent Audio Track (decoupled from currentMedia for background playback)
+  audioTrack: MediaItem | null
+  setAudioTrack: (track: MediaItem | null) => void
+  audioCurrentTime: number
+  setAudioCurrentTime: (time: number) => void
+  audioDuration: number
+  setAudioDuration: (duration: number) => void
+  audioElement: HTMLAudioElement | null
+  setAudioElement: (el: HTMLAudioElement | null) => void
+  stopAudio: () => void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -141,7 +156,18 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Player
   currentMedia: null,
-  setCurrentMedia: (media) => set({ currentMedia: media, isPlaying: !!media }),
+  setCurrentMedia: (media) => {
+    if (media && isAudioType(media.type)) {
+      // When setting an audio media, also set the persistent audio track
+      set({ currentMedia: media, isPlaying: !!media, audioTrack: media })
+    } else if (!media) {
+      // Clearing currentMedia (going back) — keep audioTrack for background playback
+      set({ currentMedia: null })
+    } else {
+      // Non-audio media (video) — stop background audio
+      set({ currentMedia: media, isPlaying: !!media, audioTrack: null })
+    }
+  },
   isPlaying: false,
   setIsPlaying: (playing) => set({ isPlaying: playing }),
 
@@ -203,7 +229,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         nextIndex = 0
       } else {
         // End of queue, no repeat
-        return { audioQueueIndex: -1, isPlaying: false }
+        return { audioQueueIndex: -1, isPlaying: false, audioTrack: null }
       }
     }
 
@@ -217,9 +243,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const nextMedia = s.audioQueue[nextIndex]
+    // Update audioTrack always, currentMedia only if currently showing audio view
+    const isShowingAudioView = s.currentMedia && isAudioType(s.currentMedia.type)
     return {
       audioQueueIndex: nextIndex,
-      currentMedia: nextMedia,
+      audioTrack: nextMedia,
+      ...(isShowingAudioView ? { currentMedia: nextMedia } : {}),
       isPlaying: true,
     }
   }),
@@ -236,9 +265,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const prevMedia = s.audioQueue[prevIndex]
+    const isShowingAudioView = s.currentMedia && isAudioType(s.currentMedia.type)
     return {
       audioQueueIndex: prevIndex,
-      currentMedia: prevMedia,
+      audioTrack: prevMedia,
+      ...(isShowingAudioView ? { currentMedia: prevMedia } : {}),
       isPlaying: true,
     }
   }),
@@ -254,4 +285,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   setShuffleEnabled: (enabled) => set({ shuffleEnabled: enabled }),
   repeatMode: 'none',
   setRepeatMode: (mode) => set({ repeatMode: mode }),
+
+  // Persistent Audio Track
+  audioTrack: null,
+  setAudioTrack: (track) => set({ audioTrack: track }),
+  audioCurrentTime: 0,
+  setAudioCurrentTime: (time) => set({ audioCurrentTime: time }),
+  audioDuration: 0,
+  setAudioDuration: (duration) => set({ audioDuration: duration }),
+  audioElement: null,
+  setAudioElement: (el) => set({ audioElement: el }),
+  stopAudio: () => set({
+    audioTrack: null,
+    audioCurrentTime: 0,
+    audioDuration: 0,
+    isPlaying: false,
+    audioQueue: [],
+    audioQueueIndex: -1,
+  }),
 }))

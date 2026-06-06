@@ -394,16 +394,18 @@ function useHlsVideoPlayer(
 }
 
 // ─── Audio Player View ─────────────────────────────────────────────────────
+// Uses the shared <audio> element from AudioPlayerBar via the store.
+// No local <audio> element — avoids double playback (echo bug).
 
 function AudioPlayerView({
   currentMedia,
-  audioSrc,
+  audioSrc: _audioSrc,
   isJellyfin,
   related,
   handleBack,
 }: {
   currentMedia: MediaItem
-  audioSrc: string
+  audioSrc: string // unused — audio is managed by AudioPlayerBar
   isJellyfin: boolean
   related: MediaItem[]
   handleBack: () => void
@@ -425,141 +427,51 @@ function AudioPlayerView({
     repeatMode,
     setRepeatMode,
     setCurrentMedia,
+    audioElement,
+    setAudioCurrentTime,
   } = useAppStore()
 
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
   const [seeking, setSeeking] = useState(false)
   const [liked, setLiked] = useState(false)
   const [disliked, setDisliked] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [queueVisible, setQueueVisible] = useState(true)
-  const [audioError, setAudioError] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
-  // Store the audio element in state for passing to child components
-  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null)
 
   const TypeIconComponent = typeIconMap[currentMedia.type] || Music
 
-  // Sync audio element ref to state (for passing to AudioVisualizer and SoundSettings)
+  // Use store subscriptions for reactive time/duration updates
+  // (zustand doesn't re-render on nested state changes by default)
+  const [reactiveTime, setReactiveTime] = useState(useAppStore.getState().audioCurrentTime)
+  const [reactiveDuration, setReactiveDuration] = useState(useAppStore.getState().audioDuration)
+
   useEffect(() => {
-    if (audioRef.current && audioRef.current !== audioElement) {
-      setAudioElement(audioRef.current)
-    }
-  }, [audioElement])
-
-  // Sync audio source
-  useEffect(() => {
-    const el = audioRef.current
-    if (!el) return
-    if (el.src !== audioSrc) {
-      el.src = audioSrc
-      el.volume = volume
-      el.load()
-    }
-    if (isPlaying) {
-      el.play().catch(() => {})
-    }
-  }, [audioSrc])
-
-  // Play/pause sync
-  useEffect(() => {
-    const el = audioRef.current
-    if (!el) return
-    if (isPlaying) {
-      el.play().catch(() => {})
-    } else {
-      el.pause()
-    }
-  }, [isPlaying])
-
-  // Volume sync
-  useEffect(() => {
-    const el = audioRef.current
-    if (!el) return
-    el.volume = volume
-  }, [volume])
-
-  // Audio error handler with retry
-  const handleAudioError = useCallback(() => {
-    const el = audioRef.current
-    if (!el) return
-    const error = el.error
-    if (error) {
-      if (retryCount < 2) {
-        // Auto-retry: reload the audio
-        setRetryCount(prev => prev + 1)
-        setTimeout(() => {
-          el.load()
-          el.play().catch(() => {})
-        }, 1000)
-      } else {
-        setAudioError('Failed to load audio. The format may not be supported.')
-      }
-    }
-  }, [retryCount])
-
-  const handleAudioCanPlay = useCallback(() => {
-    setAudioError(null)
-    setRetryCount(0)
-  }, [])
-
-  // Use event listeners instead of inline handlers to avoid ref issues
-  useEffect(() => {
-    const el = audioRef.current
-    if (!el) return
-
-    const onTimeUpdate = () => {
-      if (!seeking) {
-        setCurrentTime(el.currentTime)
-      }
-    }
-    const onLoadedMetadata = () => {
-      setDuration(el.duration)
-    }
-    const onEnded = () => {
-      playNext()
-    }
-    const onError = () => handleAudioError()
-    const onCanPlay = () => handleAudioCanPlay()
-
-    el.addEventListener('timeupdate', onTimeUpdate)
-    el.addEventListener('loadedmetadata', onLoadedMetadata)
-    el.addEventListener('durationchange', onLoadedMetadata)
-    el.addEventListener('ended', onEnded)
-    el.addEventListener('error', onError)
-    el.addEventListener('canplay', onCanPlay)
-
-    return () => {
-      el.removeEventListener('timeupdate', onTimeUpdate)
-      el.removeEventListener('loadedmetadata', onLoadedMetadata)
-      el.removeEventListener('durationchange', onLoadedMetadata)
-      el.removeEventListener('ended', onEnded)
-      el.removeEventListener('error', onError)
-      el.removeEventListener('canplay', onCanPlay)
-    }
-  }, [seeking, playNext, handleAudioError, handleAudioCanPlay])
+    const unsub1 = useAppStore.subscribe(
+      (s) => s.audioCurrentTime,
+      (time) => { if (!seeking) setReactiveTime(time) }
+    )
+    const unsub2 = useAppStore.subscribe(
+      (s) => s.audioDuration,
+      (d) => setReactiveDuration(d)
+    )
+    return () => { unsub1(); unsub2() }
+  }, [seeking])
 
   const togglePlay = useCallback(() => {
-    const el = audioRef.current
-    if (!el) return
     if (isPlaying) {
-      el.pause()
+      audioElement?.pause()
     } else {
-      el.play().catch(() => {})
+      audioElement?.play().catch(() => {})
     }
     setIsPlaying(!isPlaying)
-  }, [isPlaying, setIsPlaying])
+  }, [isPlaying, setIsPlaying, audioElement])
 
   const handleSeek = useCallback(([value]: number[]) => {
-    const el = audioRef.current
-    if (el) {
-      el.currentTime = value
-      setCurrentTime(value)
+    if (audioElement) {
+      audioElement.currentTime = value
+      setAudioCurrentTime(value)
     }
     setSeeking(false)
-  }, [])
+  }, [audioElement, setAudioCurrentTime])
 
   const handleQueueItemPlay = useCallback((index: number) => {
     setAudioQueueIndex(index)
@@ -569,7 +481,7 @@ function AudioPlayerView({
     }
   }, [audioQueue, setAudioQueueIndex, setCurrentMedia])
 
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
+  const progress = reactiveDuration > 0 ? (reactiveTime / reactiveDuration) * 100 : 0
   const VolumeIconComponent = volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
 
   const typeLabel: Record<string, string> = {
@@ -580,9 +492,6 @@ function AudioPlayerView({
 
   return (
     <div className="flex flex-col lg:flex-row h-[calc(100vh-3.5rem)]">
-      {/* Audio element (hidden) — using <audio> instead of <video> for proper audio playback */}
-      <audio ref={audioRef} className="hidden" preload="auto" />
-
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-4 lg:p-6">
@@ -591,31 +500,6 @@ function AudioPlayerView({
             <ArrowLeft className="h-4 w-4" />
             Back
           </Button>
-
-          {/* Audio Error Banner */}
-          {audioError && (
-            <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20 flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-              <p className="text-sm text-destructive flex-1">{audioError}</p>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setAudioError(null)
-                  setRetryCount(0)
-                  const el = audioRef.current
-                  if (el) {
-                    el.load()
-                    el.play().catch(() => {})
-                  }
-                }}
-                className="shrink-0"
-              >
-                <RefreshCw className="h-4 w-4 mr-1" />
-                Retry
-              </Button>
-            </div>
-          )}
 
           {/* Audio Player Layout */}
           <div className="flex flex-col items-center">
@@ -700,17 +584,17 @@ function AudioPlayerView({
             <div className="w-full max-w-lg mb-4">
               {/* Progress bar */}
               <div className="flex items-center gap-2 mb-3 text-xs text-muted-foreground">
-                <span className="w-10 text-right tabular-nums">{formatTime(currentTime)}</span>
+                <span className="w-10 text-right tabular-nums">{formatTime(reactiveTime)}</span>
                 <Slider
-                  value={[currentTime]}
+                  value={[reactiveTime]}
                   min={0}
-                  max={duration || 100}
+                  max={reactiveDuration || 100}
                   step={0.1}
                   onPointerDown={() => setSeeking(true)}
                   onValueChange={handleSeek}
                   className="flex-1"
                 />
-                <span className="w-10 tabular-nums">{formatTime(duration)}</span>
+                <span className="w-10 tabular-nums">{formatTime(reactiveDuration)}</span>
               </div>
 
               {/* Control buttons */}

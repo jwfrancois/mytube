@@ -98,10 +98,39 @@ export async function GET(
       })
     }
 
-    // ─── Audio Mode: Use universal audio endpoint ───
+    // ─── Audio Mode ───
     if (mediaType === 'audio' || mediaType === 'music') {
-      // Use universal audio endpoint for best browser compatibility
-      // This endpoint handles transcode decisions server-side
+      // Forward the Range header from the client for seeking support
+      const headers: Record<string, string> = {}
+      const rangeHeader = request.headers.get('range')
+      if (rangeHeader) {
+        headers['Range'] = rangeHeader
+      }
+
+      // Helper to proxy an audio response
+      const proxyAudioResponse = (res: Response) => {
+        const contentType = res.headers.get('content-type') || 'audio/mpeg'
+        const contentLength = res.headers.get('content-length')
+        const contentRange = res.headers.get('content-range')
+        const acceptRanges = res.headers.get('accept-ranges') || 'bytes'
+        const statusCode = res.status === 206 ? 206 : 200
+
+        const responseHeaders: Record<string, string> = {
+          'Content-Type': contentType,
+          'Accept-Ranges': acceptRanges,
+          'Cache-Control': 'public, max-age=3600',
+        }
+
+        if (contentLength) responseHeaders['Content-Length'] = contentLength
+        if (contentRange) responseHeaders['Content-Range'] = contentRange
+
+        return new NextResponse(res.body, {
+          status: statusCode,
+          headers: responseHeaders,
+        })
+      }
+
+      // Strategy 1: Try the universal audio endpoint
       const audioParams = new URLSearchParams({
         UserId: server.userId,
         DeviceId: deviceId,
@@ -114,49 +143,124 @@ export async function GET(
         StartTimeTicks: '0',
       })
 
-      const audioUrl = `${server.serverUrl}/Audio/${itemId}/universal?${audioParams.toString()}`
+      const universalUrl = `${server.serverUrl}/Audio/${itemId}/universal?${audioParams.toString()}`
 
-      // Forward the Range header from the client for seeking support
-      const headers: Record<string, string> = {}
-      const rangeHeader = request.headers.get('range')
-      if (rangeHeader) {
-        headers['Range'] = rangeHeader
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+        const res = await fetch(universalUrl, {
+          headers,
+          signal: controller.signal,
+        })
+
+        clearTimeout(timeoutId)
+
+        if (res.ok || res.status === 206) {
+          return proxyAudioResponse(res)
+        }
+
+        // Universal endpoint failed — log and try fallback
+        console.warn(`Jellyfin universal audio endpoint returned ${res.status} for item ${itemId}, trying PlaybackInfo fallback...`)
+      } catch (err) {
+        console.warn('Jellyfin universal audio endpoint error, trying PlaybackInfo fallback:', err)
       }
 
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 120000)
+      // Strategy 2: Use PlaybackInfo API to get a stream URL (like video mode does)
+      try {
+        const playbackInfoUrl = `${server.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${server.userId}&MaxStreamingBitrate=320000&StartTimeTicks=0&AutoOpenLiveStream=true&DeviceId=${deviceId}`
+        const playbackController = new AbortController()
+        const playbackTimeout = setTimeout(() => playbackController.abort(), 10000)
 
-      const res = await fetch(audioUrl, {
-        headers,
-        signal: controller.signal,
-      })
+        const playbackRes = await fetch(playbackInfoUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Emby-Token': server.accessToken,
+          },
+          body: JSON.stringify({
+            DeviceProfile: {
+              MaxStreamingBitrate: 320000,
+              MaxStaticBitrate: 320000,
+              MusicStreamingTranscodingBitrate: 320000,
+              DirectPlayProfiles: [
+                { Container: 'mp3,aac,ogg,wav,flac,alac,m4a,wma', AudioCodec: 'mp3,aac,opus,vorbis,flac,alac', Type: 'Audio' },
+              ],
+              TranscodingProfiles: [
+                { Container: 'mp3', AudioCodec: 'mp3', Type: 'Audio', Context: 'Streaming', Protocol: 'https' },
+              ],
+              CodecProfiles: [],
+              SubtitleProfiles: [],
+            },
+          }),
+          signal: playbackController.signal,
+        })
 
-      clearTimeout(timeoutId)
+        clearTimeout(playbackTimeout)
 
-      if (!res.ok && res.status !== 206) {
-        console.error('Jellyfin audio stream error:', res.status, await res.text().catch(() => ''))
+        if (playbackRes.ok) {
+          const playbackData = await playbackRes.json()
+          const mediaSource = playbackData.MediaSources?.[0]
+
+          let audioStreamUrl: string | null = null
+
+          if (mediaSource) {
+            if (mediaSource.SupportsDirectPlay || mediaSource.SupportsDirectStream) {
+              // Direct stream URL
+              audioStreamUrl = `${server.serverUrl}/Audio/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
+            } else if (mediaSource.TranscodingUrl) {
+              const transcodeUrl = mediaSource.TranscodingUrl
+              audioStreamUrl = transcodeUrl.startsWith('http')
+                ? transcodeUrl
+                : `${server.serverUrl}${transcodeUrl}`
+            }
+          }
+
+          if (audioStreamUrl) {
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 120000)
+
+            const streamRes = await fetch(audioStreamUrl, {
+              headers,
+              signal: controller.signal,
+            })
+
+            clearTimeout(timeoutId)
+
+            if (streamRes.ok || streamRes.status === 206) {
+              return proxyAudioResponse(streamRes)
+            }
+
+            console.error('Jellyfin PlaybackInfo audio stream error:', streamRes.status)
+          }
+        }
+      } catch (err) {
+        console.error('Jellyfin PlaybackInfo audio error:', err)
+      }
+
+      // Strategy 3: Last resort — direct stream URL
+      try {
+        const directUrl = `${server.serverUrl}/Audio/${itemId}/stream?Static=true&MediaSourceId=${mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 120000)
+
+        const res = await fetch(directUrl, {
+          headers,
+          signal: controller.signal,
+        })
+
+        clearTimeout(timeoutId)
+
+        if (res.ok || res.status === 206) {
+          return proxyAudioResponse(res)
+        }
+
+        console.error('Jellyfin direct audio stream error:', res.status)
         return NextResponse.json({ error: 'Failed to stream audio from Jellyfin' }, { status: res.status })
+      } catch (err) {
+        console.error('Jellyfin direct audio stream error:', err)
+        return NextResponse.json({ error: 'Failed to stream audio from Jellyfin' }, { status: 500 })
       }
-
-      const contentType = res.headers.get('content-type') || 'audio/mpeg'
-      const contentLength = res.headers.get('content-length')
-      const contentRange = res.headers.get('content-range')
-      const acceptRanges = res.headers.get('accept-ranges') || 'bytes'
-      const statusCode = res.status === 206 ? 206 : 200
-
-      const responseHeaders: Record<string, string> = {
-        'Content-Type': contentType,
-        'Accept-Ranges': acceptRanges,
-        'Cache-Control': 'public, max-age=3600',
-      }
-
-      if (contentLength) responseHeaders['Content-Length'] = contentLength
-      if (contentRange) responseHeaders['Content-Range'] = contentRange
-
-      return new NextResponse(res.body, {
-        status: statusCode,
-        headers: responseHeaders,
-      })
     }
 
     // ─── Video Direct / Transcode Mode ───

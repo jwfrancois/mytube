@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 15000)
-        const commonFields = 'PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount'
+        const commonFields = 'PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount'
 
         // Search across all items for podcast-like content
         const url = `${server.serverUrl}/Items?UserId=${server.userId}&IncludeItemTypes=Series,MusicAlbum,Audio&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
         const timeoutId = setTimeout(() => controller.abort(), 15000)
 
         let url: string
-        const commonFields = 'PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount'
+        const commonFields = 'PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount'
 
         if (type === 'MUSIC') {
           url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=MusicAlbum&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
@@ -173,12 +173,12 @@ export async function GET(request: NextRequest) {
         } else if (type === 'TV_SHOW') {
           url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Series&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'MOVIE') {
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Movie&Recursive=true&Fields=${commonFields},MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Movie&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'AUDIOBOOK') {
           url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=AudioBook&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'COLLECTION') {
           // BoxSet (movie collections) — can exist at the root level or inside libraries
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=BoxSet&Recursive=true&Fields=${commonFields},MediaSources&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=BoxSet&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else {
           url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         }
