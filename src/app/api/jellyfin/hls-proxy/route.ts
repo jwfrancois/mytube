@@ -107,10 +107,28 @@ export async function GET(request: NextRequest) {
 /**
  * Rewrite URLs in an HLS m3u8 playlist to go through our proxy.
  * Handles both absolute and relative URLs.
+ *
+ * IMPORTANT: Query parameters from the m3u8 URL are forwarded to segment URLs,
+ * because Jellyfin needs parameters like MediaSourceId, DeviceId, etc. to
+ * identify the transcoding session when serving individual segments.
  */
 function rewriteHlsPlaylist(playlistText: string, playlistUrl: string, serverUrl: string): string {
   // Parse the base URL for resolving relative paths
   const baseUrl = playlistUrl.substring(0, playlistUrl.lastIndexOf('/') + 1)
+
+  // Extract query parameters from the m3u8 URL — these are needed for segment requests
+  // so Jellyfin can identify the transcoding session
+  let m3u8QueryString = ''
+  try {
+    const urlObj = new URL(playlistUrl)
+    m3u8QueryString = urlObj.search // includes the '?' prefix
+  } catch {
+    // If URL parsing fails, try to extract query string manually
+    const qIndex = playlistUrl.indexOf('?')
+    if (qIndex >= 0) {
+      m3u8QueryString = playlistUrl.substring(qIndex)
+    }
+  }
 
   const lines = playlistText.split('\n')
   const rewritten: string[] = []
@@ -127,7 +145,9 @@ function rewriteHlsPlaylist(playlistText: string, playlistUrl: string, serverUrl
     // Handle #EXT-X-KEY and #EXT-X-MAP directives with URI attributes
     if (trimmed.startsWith('#') && trimmed.includes('URI="')) {
       const rewrittenLine = line.replace(/URI="([^"]+)"/g, (match, uri) => {
-        const absoluteUrl = resolveUrl(uri, baseUrl, serverUrl)
+        let absoluteUrl = resolveUrl(uri, baseUrl, serverUrl)
+        // Forward m3u8 query params to key/map URLs too
+        absoluteUrl = appendQueryString(absoluteUrl, m3u8QueryString)
         const proxyUrl = buildProxyUrl(absoluteUrl)
         return `URI="${proxyUrl}"`
       })
@@ -137,7 +157,10 @@ function rewriteHlsPlaylist(playlistText: string, playlistUrl: string, serverUrl
 
     // Handle segment URLs (lines that aren't comments)
     if (!trimmed.startsWith('#')) {
-      const absoluteUrl = resolveUrl(trimmed, baseUrl, serverUrl)
+      let absoluteUrl = resolveUrl(trimmed, baseUrl, serverUrl)
+      // Forward m3u8 query params to segment URLs — Jellyfin needs these
+      // (MediaSourceId, DeviceId, VideoCodec, etc.) to identify the transcode session
+      absoluteUrl = appendQueryString(absoluteUrl, m3u8QueryString)
       const proxyUrl = buildProxyUrl(absoluteUrl)
       rewritten.push(proxyUrl)
       continue
@@ -147,6 +170,39 @@ function rewriteHlsPlaylist(playlistText: string, playlistUrl: string, serverUrl
   }
 
   return rewritten.join('\n')
+}
+
+/**
+ * Append a query string from the m3u8 URL to a segment URL.
+ * Merges parameters intelligently — segment's own params take precedence.
+ */
+function appendQueryString(targetUrl: string, queryString: string): string {
+  if (!queryString || queryString === '?') return targetUrl
+
+  // Parse the target URL to check if it already has query params
+  const targetUrlIndex = targetUrl.indexOf('?')
+  const targetHasQuery = targetUrlIndex >= 0
+
+  if (!targetHasQuery) {
+    // Target has no query string — just append the m3u8's query string
+    return `${targetUrl}${queryString}`
+  }
+
+  // Both have query strings — merge them (target params take precedence)
+  const targetBase = targetUrl.substring(0, targetUrlIndex)
+  const targetQuery = targetUrl.substring(targetUrlIndex + 1)
+
+  // Parse both query strings into Maps for easy merging
+  const m3u8Params = new URLSearchParams(queryString.startsWith('?') ? queryString.substring(1) : queryString)
+  const targetParams = new URLSearchParams(targetQuery)
+
+  // Merge: m3u8 params first, then target params (target overrides)
+  const merged = new URLSearchParams(m3u8Params)
+  for (const [key, value] of targetParams) {
+    merged.set(key, value)
+  }
+
+  return `${targetBase}?${merged.toString()}`
 }
 
 /**

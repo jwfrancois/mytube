@@ -293,15 +293,14 @@ function useHlsVideoPlayer(
         fallbackToNextStrategy(strat)
       }
     } else {
-      // Direct or transcode: fetch the URL first to check if it returns HLS JSON
+      // Direct or transcode: the stream API now always returns HLS JSON for video,
+      // so we parse it and use hls.js just like the 'hls' strategy.
       try {
-        const res = await fetch(url, { method: 'HEAD' })
+        const res = await fetch(url)
         const contentType = res.headers.get('content-type') || ''
 
         if (contentType.includes('application/json')) {
-          // API returned JSON (likely needs HLS) — parse and use hls.js
-          const fullRes = await fetch(url)
-          const data = await fullRes.json()
+          const data = await res.json()
 
           if (data.format === 'hls' && data.url) {
             const hlsModule = await loadHls()
@@ -350,15 +349,19 @@ function useHlsVideoPlayer(
             return
           }
         }
-      } catch {
-        // HEAD request failed or not JSON — fall through to direct src assignment
-      }
 
-      // Set src on video element directly
-      video.src = url
-      setCurrentSrc(url)
-      video.load()
-      video.play().catch(() => {})
+        // If the response was not JSON (shouldn't happen for video anymore),
+        // try to set the src directly as a last resort
+        console.warn('Stream returned non-HLS response, attempting direct src assignment')
+        video.src = url
+        setCurrentSrc(url)
+        video.load()
+        video.play().catch(() => {})
+      } catch (err) {
+        console.error('Direct/transcode strategy failed:', err)
+        destroyHls()
+        fallbackToNextStrategy(strat)
+      }
     }
   }, [videoRef, buildStreamUrl, destroyHls])
 
@@ -444,7 +447,7 @@ function useHlsVideoPlayer(
     destroyHls()
     setVideoError(null)
     setVideoLoading(true)
-    setStrategy('direct')
+    setStrategy('hls')
     retryCountRef.current = 0
     setCurrentSrc(null)
   }, [destroyHls])
@@ -452,7 +455,7 @@ function useHlsVideoPlayer(
   // Manual retry (user clicks retry button)
   const manualRetry = useCallback(() => {
     retryCountRef.current = 0
-    tryStrategy('direct')
+    tryStrategy('hls')
   }, [tryStrategy])
 
   // Try specific strategy manually
@@ -488,7 +491,7 @@ function useHlsVideoPlayer(
     manualRetry,
     trySpecificStrategy,
     destroyHls,
-    startPlayback: useCallback(() => tryStrategy('direct'), [tryStrategy]),
+    startPlayback: useCallback(() => tryStrategy('hls'), [tryStrategy]),
   }
 }
 

@@ -674,3 +674,51 @@ Stage Summary:
 - Audio tracks advance automatically with multi-event listener fallback + 3s safety timeout
 - Jellyfin credentials moved to environment variables for secure Vercel deployment
 - Project is ready for GitHub/Vercel deployment with proper .gitignore and .env.example
+
+---
+Task ID: 10
+Agent: Main Agent
+Task: Fix video player not playing videos (HLS streaming fix)
+
+Work Log:
+- Investigated why videos don't play in the video player
+- Analyzed dev server logs: stream API was timing out at 30s because it tried to proxy entire video files through Next.js
+- Identified three root causes:
+  1. Default video playback strategy was 'direct' which tried to proxy full video files through Next.js (too slow, 30s+ timeout)
+  2. PlaybackInfo API call had 10s timeout that was too short (AbortError)
+  3. HLS proxy's rewriteHlsPlaylist didn't forward query parameters from m3u8 URL to segment URLs
+  4. TranscodingProfiles used Protocol: 'https' which Jellyfin rejects (should be 'http')
+
+- Fix 1: Changed default video strategy from 'direct' to 'hls' in VideoPlayer.tsx
+  - startPlayback now calls tryStrategy('hls') instead of tryStrategy('direct')
+  - resetForNewMedia now sets strategy to 'hls'
+  - manualRetry now tries 'hls' strategy first
+
+- Fix 2: Rewrote stream/[itemId]/route.ts video mode to always return HLS JSON
+  - Video content never proxies through Next.js anymore (entire files are too slow)
+  - All video requests return { url: proxyUrl, format: 'hls', mediaSourceId }
+  - PlaybackInfo timeout increased from 10s to 30s
+  - PlaybackInfo DeviceProfile uses DirectPlayProfiles: [] to force HLS transcoding
+  - Manual HLS URL fallback includes all necessary query parameters
+
+- Fix 3: Rewrote hls-proxy/route.ts to forward m3u8 query parameters to segment URLs
+  - Added appendQueryString() function that merges m3u8 query params into segment URLs
+  - Segment URLs now include MediaSourceId, DeviceId, etc. from the m3u8 URL
+  - This fixes 404 errors on .ts segments that Jellyfin was returning
+
+- Fix 4: Changed Protocol: 'https' to Protocol: 'http' in all TranscodingProfiles
+  - Jellyfin API rejects 'https' as invalid protocol value (returns 400)
+  - This was causing PlaybackInfo to fail silently, falling back to incorrect manual URLs
+
+- Simplified client-side tryStrategy for 'direct'/'transcode' strategies
+  - Both now expect JSON response and use hls.js (no more HEAD request + video.src fallback)
+  - Cleaner error handling with proper fallback chain
+
+Stage Summary:
+- Videos now play successfully using HLS streaming through the proxy
+- m3u8 playlist loads in ~280-640ms (vs 30s+ before)
+- .ts segments return 200 (vs 404 before)
+- PlaybackInfo API call succeeds in ~285ms (vs AbortError before)
+- All video content uses HLS chunked transfer (no more full-file proxying)
+- Lint passes cleanly, dev server compiles without errors
+- Verified with Agent Browser: video plays with currentTime advancing, readyState=4
