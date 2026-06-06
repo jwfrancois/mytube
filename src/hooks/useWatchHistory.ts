@@ -23,6 +23,11 @@ interface WatchHistoryItem {
   jellyfinId?: string
   itemType?: string
   communityRating?: number
+  hasChildren?: boolean
+  childCount?: number
+  mediaSourceId?: string
+  collectionType?: string
+  parentId?: string
   watchedAt: string
 }
 
@@ -43,6 +48,11 @@ interface WatchLaterItem {
   jellyfinId?: string
   itemType?: string
   communityRating?: number
+  hasChildren?: boolean
+  childCount?: number
+  mediaSourceId?: string
+  collectionType?: string
+  parentId?: string
   addedAt: string
 }
 

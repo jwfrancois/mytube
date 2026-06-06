@@ -277,3 +277,32 @@ Stage Summary:
 - TV Shows properly show season/episode browser with podcast episode support
 - Podcast library is populated and functional with episode listing
 - All lint checks pass with zero errors, browser verification confirms no runtime errors
+
+---
+Task ID: 11
+Agent: Main Agent
+Task: Fix hydration mismatch error, audio player not rendering, and verify overall functionality
+
+Work Log:
+- Diagnosed hydration mismatch root cause: `useWatchHistory` hook reads from localStorage during `useState` initialization, causing `watchHistory` and `watchLater` to have data on the client but be empty on the server. This makes the `sections` array different between server and client renders, causing completely different DOM structures (server renders `p-6` fallback, client renders `pb-6` with hero banner and shelves)
+- Fixed hydration mismatch using `useSyncExternalStore` pattern: Added a `mounted` flag in `page.tsx` that returns `false` during SSR and `true` on the client. When `mounted` is false, renders a consistent loading skeleton that matches between server and client. After hydration, React re-renders with `mounted=true` and shows the full sections-based UI
+- Fixed critical bug: AudioPlayerView was defined but never rendered. Audio content (MUSIC, PODCAST, AUDIOBOOK) was being played in a `<video>` element instead of the proper `<audio>` element with the AudioPlayerView component. Added `if (isAudio)` check between the browsable container check and the video player view in `VideoPlayer.tsx`
+- Updated `useWatchHistory.ts`: Added missing fields to `WatchHistoryItem` and `WatchLaterItem` interfaces (`hasChildren`, `childCount`, `mediaSourceId`, `collectionType`, `parentId`) to match what `page.tsx` uses when building sections
+- Simplified `page.tsx`: Replaced verbose manual property spreading in `watchHistory` and `watchLater` section builders with direct array references (interfaces now have all needed fields)
+- Verified all fixes with Agent Browser: 
+  - Home page renders with hero banner, sections, no hydration errors
+  - Audio content (Hip Hop Beats) properly opens AudioPlayerView with audio controls, visualizer, queue
+  - Video content (Elephant Dream) plays in video player with Jellyfin streaming
+  - TV Shows display seasons ("1 Season", "2 Seasons") and episode browser
+  - Episode playback works (S1E1 - Comeback plays from Absentia series)
+  - No console errors or page errors
+- All lint checks pass with zero errors
+
+Stage Summary:
+- Hydration mismatch error completely fixed using useSyncExternalStore pattern
+- AudioPlayerView now renders for audio content (MUSIC, PODCAST, AUDIOBOOK) instead of video element
+- Audio content uses proper `<audio>` element with visualizer, queue, and controls
+- Video content uses `<video>` element with HLS fallback support
+- TV Shows properly display season/episode browser with playback
+- All categories work: Movies, TV Shows, Music, Podcasts, Audiobooks, Collections
+- Zero lint errors, zero runtime errors

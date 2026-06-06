@@ -1240,6 +1240,20 @@ export function VideoPlayer() {
     )
   }
 
+  // ─── Audio Player View (Music, Podcasts, Audiobooks) ───
+  // IMPORTANT: Check audio AFTER browsable containers but BEFORE video
+  if (isAudio) {
+    return (
+      <AudioPlayerView
+        currentMedia={currentMedia}
+        audioSrc={audioSrc}
+        isJellyfin={!!isJellyfin}
+        related={related}
+        handleBack={handleBack}
+      />
+    )
+  }
+
   // ─── Video Player View (Movies/Episodes) ───
   const typeColor = {
     MOVIE: 'bg-red-500/10 text-red-500',

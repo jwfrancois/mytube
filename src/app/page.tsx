@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useAppStore, MediaType } from '@/store/useAppStore'
 import { Header } from '@/components/Header'
 import { Sidebar } from '@/components/Sidebar'
@@ -45,6 +45,15 @@ export default function Home() {
     removeFromWatchLater,
     isInWatchLater,
   } = useWatchHistory()
+
+  // Track mount state to prevent hydration mismatch
+  // (watchHistory/watchLater read from localStorage on client but not on server)
+  // Using useSyncExternalStore is the React-recommended way to handle server/client differences
+  const mounted = useSyncExternalStore(
+    () => () => {}, // subscribe (no-op, value never changes)
+    () => true,     // getSnapshot (client: always true after hydration)
+    () => false     // getServerSnapshot (server: always false)
+  )
 
   // Track whether we've loaded Jellyfin items for the home page
   const jellyfinHomeLoadedRef = useRef(false)
@@ -166,28 +175,7 @@ export default function Home() {
       result.push({
         id: 'continue-watching',
         title: 'Continue Watching',
-        items: watchHistory.slice(0, 20).map((h) => ({
-          id: h.id,
-          title: h.title,
-          description: h.description,
-          type: h.type,
-          genre: h.genre,
-          thumbnail: h.thumbnail,
-          videoUrl: h.videoUrl,
-          duration: h.duration,
-          releaseYear: h.releaseYear,
-          artist: h.artist,
-          views: h.views,
-          channel: h.channel,
-          isJellyfin: h.isJellyfin,
-          jellyfinId: h.jellyfinId,
-          itemType: h.itemType,
-          communityRating: h.communityRating,
-          hasChildren: h.hasChildren,
-          childCount: h.childCount,
-          mediaSourceId: h.mediaSourceId,
-          collectionType: h.collectionType,
-        })),
+        items: watchHistory.slice(0, 20),
         icon: <History className="h-5 w-5 text-emerald-400" />,
       })
     }
@@ -215,28 +203,7 @@ export default function Home() {
       result.push({
         id: 'watch-later',
         title: 'My List',
-        items: watchLater.map((w) => ({
-          id: w.id,
-          title: w.title,
-          description: w.description,
-          type: w.type,
-          genre: w.genre,
-          thumbnail: w.thumbnail,
-          videoUrl: w.videoUrl,
-          duration: w.duration,
-          releaseYear: w.releaseYear,
-          artist: w.artist,
-          views: w.views,
-          channel: w.channel,
-          isJellyfin: w.isJellyfin,
-          jellyfinId: w.jellyfinId,
-          itemType: w.itemType,
-          communityRating: w.communityRating,
-          hasChildren: w.hasChildren,
-          childCount: w.childCount,
-          mediaSourceId: w.mediaSourceId,
-          collectionType: w.collectionType,
-        })),
+        items: watchLater,
         icon: <Bookmark className="h-5 w-5 text-amber-400" />,
       })
     }
@@ -330,6 +297,40 @@ export default function Home() {
     if (currentMedia) return <VideoPlayer />
     if (isSearching || searchQuery) return <SearchResults onSearch={handleSearch} />
     if (activeCategory === 'JELLYFIN') return <JellyfinBrowser />
+
+    // During SSR/hydration, render a consistent loading state to prevent mismatch.
+    // After mount, localStorage data (watchHistory/watchLater) is available,
+    // so we can render the full sections-based UI.
+    if (!mounted) {
+      return (
+        <div className="py-6">
+          {/* Hero skeleton */}
+          <div className="relative w-full h-[50vh] min-h-[360px] max-h-[600px] mb-8">
+            <div className="w-full h-full bg-muted/20 animate-pulse rounded-none" />
+          </div>
+          {/* Section skeletons */}
+          {[1, 2, 3].map((s) => (
+            <div key={s} className="mb-8 px-6">
+              <div className="h-6 w-40 mb-4 bg-muted/20 animate-pulse rounded" />
+              <div className="flex gap-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="shrink-0 w-[220px] space-y-2">
+                    <div className="aspect-video rounded-lg w-full bg-muted/20 animate-pulse" />
+                    <div className="flex gap-2">
+                      <div className="h-8 w-8 rounded-full shrink-0 bg-muted/20 animate-pulse" />
+                      <div className="space-y-1 flex-1">
+                        <div className="h-3.5 w-3/4 bg-muted/20 animate-pulse rounded" />
+                        <div className="h-3 w-1/2 bg-muted/20 animate-pulse rounded" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    }
 
     // For ALL category, use section-based layout
     if (activeCategory === 'ALL' && sections.length > 0) {
