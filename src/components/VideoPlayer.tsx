@@ -878,6 +878,11 @@ export function VideoPlayer() {
     setIsPlaying,
     setAudioQueue,
     addToAudioQueue,
+    setRepeatMode,
+    volume,
+    setVolume,
+    playbackSpeed,
+    setPlaybackSpeed,
   } = useAppStore()
 
   const [liked, setLiked] = useState(false)
@@ -885,6 +890,10 @@ export function VideoPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
   const [companionOpen, setCompanionOpen] = useState(false)
+
+  // Video audio controls use shared store state (same as audio player)
+  const [videoSettingsOpen, setVideoSettingsOpen] = useState(false)
+  const [videoElementState, setVideoElementState] = useState<HTMLVideoElement | null>(null)
 
   // HLS video player hook for Jellyfin video content
   const {
@@ -922,6 +931,21 @@ export function VideoPlayer() {
       resetForNewMedia()
     }
   }
+
+  // Register video element in state (for SoundSettings)
+  useEffect(() => {
+    if (videoRef.current && videoRef.current !== videoElementState) {
+      setVideoElementState(videoRef.current)
+    }
+  }, [videoElementState])
+
+  // Sync video element volume/speed with shared store state
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.volume = volume
+    video.playbackRate = playbackSpeed
+  }, [volume, playbackSpeed])
 
   // Start playback when a new Jellyfin video is selected
   useEffect(() => {
@@ -986,6 +1010,8 @@ export function VideoPlayer() {
           if (currentIdx >= 0) {
             useAppStore.setState({ audioQueueIndex: currentIdx })
           }
+          // Ensure repeat-all is set for album playback
+          setRepeatMode('all')
           return
         }
 
@@ -995,6 +1021,8 @@ export function VideoPlayer() {
           const tracks = (data.items || []).filter((item: MediaItem) => isAudioType(item.type))
           if (tracks.length > 0) {
             setAudioQueue(tracks)
+            // Enable continuous album playback by default
+            setRepeatMode('all')
             // Find the current item in the tracks
             const currentIdx = tracks.findIndex((t: MediaItem) => t.id === currentMedia.id || t.jellyfinId === currentMedia.jellyfinId)
             if (currentIdx >= 0) {
@@ -1014,6 +1042,8 @@ export function VideoPlayer() {
           const tracks = (data.items || []).filter((item: MediaItem) => isAudioType(item.type))
           if (tracks.length > 0) {
             setAudioQueue(tracks)
+            // Enable continuous album playback by default
+            setRepeatMode('all')
             // Find the current item in the tracks
             const currentIdx = tracks.findIndex((t: MediaItem) => t.id === currentMedia.id)
             if (currentIdx >= 0) {
@@ -1041,7 +1071,7 @@ export function VideoPlayer() {
     }
 
     populateQueue()
-  }, [currentMedia, setAudioQueue, addToAudioQueue])
+  }, [currentMedia, setAudioQueue, addToAudioQueue, setRepeatMode])
 
   if (!currentMedia) return null
 
@@ -1322,6 +1352,98 @@ export function VideoPlayer() {
               isOpen={companionOpen}
               onToggle={() => setCompanionOpen(!companionOpen)}
             />
+          </div>
+
+          {/* Video Audio Controls */}
+          <div className="mt-3 flex items-center gap-3 px-1">
+            {/* Mute/Unmute */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => setVolume(volume === 0 ? 0.8 : 0)}
+            >
+              {volume === 0 ? (
+                <VolumeX className="h-4 w-4" />
+              ) : volume < 0.5 ? (
+                <Volume1 className="h-4 w-4" />
+              ) : (
+                <Volume2 className="h-4 w-4" />
+              )}
+            </Button>
+
+            {/* Volume slider */}
+            <Slider
+              value={[volume * 100]}
+              min={0}
+              max={100}
+              step={1}
+              onValueChange={([v]) => setVolume(v / 100)}
+              className="w-28 sm:w-36"
+            />
+
+            {/* Playback speed */}
+            <div className="hidden sm:flex items-center gap-1.5 ml-2">
+              {[0.5, 1, 1.25, 1.5, 2].map((speed) => (
+                <Button
+                  key={speed}
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'h-7 px-2 text-xs',
+                    playbackSpeed === speed && 'bg-primary/10 text-primary font-medium'
+                  )}
+                  onClick={() => setPlaybackSpeed(speed)}
+                >
+                  {speed}x
+                </Button>
+              ))}
+            </div>
+
+            {/* Sound Settings */}
+            <Popover open={videoSettingsOpen} onOpenChange={setVideoSettingsOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn('h-8 w-8', videoSettingsOpen && 'text-primary')}
+                >
+                  <Settings2 className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" side="top" align="end">
+                <SoundSettings audioElement={videoElementState} compact disableVolumeSpeedSync />
+              </PopoverContent>
+            </Popover>
+
+            {/* Mobile speed control */}
+            <div className="sm:hidden ml-auto">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1">
+                    <span>{playbackSpeed}x</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-1" side="top" align="end">
+                  <div className="flex flex-col gap-0.5">
+                    {[0.5, 1, 1.25, 1.5, 2].map((speed) => (
+                      <Button
+                        key={speed}
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          'h-7 px-3 text-xs justify-start',
+                          playbackSpeed === speed && 'bg-primary/10 text-primary font-medium'
+                        )}
+                        onClick={() => setPlaybackSpeed(speed)}
+                      >
+                        {speed}x
+                      </Button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
 
           {/* Strategy indicator */}

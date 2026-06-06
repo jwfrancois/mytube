@@ -31,9 +31,11 @@ const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2]
 interface SoundSettingsProps {
   audioElement: HTMLAudioElement | HTMLVideoElement | null
   compact?: boolean
+  /** When true, volume/speed sync is skipped (used for video player which manages its own sync) */
+  disableVolumeSpeedSync?: boolean
 }
 
-export function SoundSettings({ audioElement, compact = false }: SoundSettingsProps) {
+export function SoundSettings({ audioElement, compact = false, disableVolumeSpeedSync = false }: SoundSettingsProps) {
   const {
     volume,
     setVolume,
@@ -69,21 +71,23 @@ export function SoundSettings({ audioElement, compact = false }: SoundSettingsPr
     }
   }, [equalizerPreset])
 
-  // Apply volume to the audio element
+  // Apply volume to the audio element (skip when parent manages sync)
   useEffect(() => {
+    if (disableVolumeSpeedSync) return
     const el = elRef.current
     if (el) {
       el.volume = volume
     }
-  }, [volume])
+  }, [volume, disableVolumeSpeedSync])
 
-  // Apply playback speed to the audio element
+  // Apply playback speed to the audio element (skip when parent manages sync)
   useEffect(() => {
+    if (disableVolumeSpeedSync) return
     const el = elRef.current
     if (el) {
       el.playbackRate = playbackSpeed
     }
-  }, [playbackSpeed])
+  }, [playbackSpeed, disableVolumeSpeedSync])
 
   const VolumeIcon = volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
 

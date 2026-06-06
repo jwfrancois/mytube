@@ -513,3 +513,38 @@ Stage Summary:
 - All components use glassmorphism design, purple/pink gradient accents, shadcn/ui components, and lucide-react icons
 - Responsive (mobile-first), no indigo/blue colors, no emojis
 - Consistent with existing AIConcierge/AIRadioStations/SemanticDiscovery styling patterns
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix video player audio controls and continuous album playback
+
+Work Log:
+- Analyzed two user-reported issues: (1) video player lacks audio controls for movies/TV shows, (2) audio player doesn't play album tracks continuously
+- Issue 1 Fix - Added custom audio controls to the video player:
+  - Added volume slider and mute/unmute button below the video element
+  - Added playback speed buttons (0.5x, 1x, 1.25x, 1.5x, 2x) with active state highlighting
+  - Added SoundSettings popover (with EQ presets) for the video player
+  - Added mobile-responsive speed control (dropdown on mobile, inline buttons on desktop)
+  - Synced video element volume/speed with shared Zustand store state (volume, playbackSpeed)
+  - Used `disableVolumeSpeedSync` prop on SoundSettings to prevent double-sync conflicts
+  - Registered video element in state (videoElementState) to pass to SoundSettings (avoids accessing ref during render)
+- Issue 2 Fix - Enabled continuous album playback:
+  - Added `setRepeatMode('all')` calls in the `populateQueue` function in VideoPlayer.tsx when an album queue is populated from Jellyfin sibling tracks
+  - This ensures that when playing from an album, repeat mode is automatically set to 'all' so tracks loop continuously
+  - The `handlePlayMusicTrack` in MediaDetail.tsx already set repeatMode to 'all', but the `populateQueue` effect in VideoPlayer.tsx (which handles tracks played from the home grid) did not
+- Updated SoundSettings component:
+  - Added `disableVolumeSpeedSync` optional prop to skip volume/speed sync effects when the parent component manages its own sync
+  - This prevents the SoundSettings from fighting with the video player's own volume/speed sync useEffect
+- Lint passes cleanly, dev server compiles without errors
+- Verified with Agent Browser:
+  - Video player shows volume slider (80%), mute button, speed buttons (0.5x-2x), and settings popover
+  - Mute button works: clicking sets volume to 0, clicking again restores to 0.8
+  - Speed buttons work: clicking 1.5x changes video playbackRate to 1.5
+  - Audio player: clicking a track from an album shows the audio player view with queue, playback controls, and progress
+  - Audio element is present when a track is playing
+
+Stage Summary:
+- Video player now has custom audio controls (volume, mute, speed, EQ) for movies and TV shows
+- Album playback now defaults to repeat-all mode, enabling continuous playback through all tracks
+- SoundSettings component enhanced with disableVolumeSpeedSync for video element support
+- Both fixes verified working via Agent Browser
