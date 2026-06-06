@@ -147,6 +147,10 @@ export function AudioPlayerBar() {
   const [retryCount, setRetryCount] = useState(0)
   const [audioElementState, setAudioElementState] = useState<HTMLAudioElement | null>(null)
 
+  // Track the current audio source ID to reliably detect source changes
+  // (comparing el.src with a relative URL is unreliable because el.src is resolved to absolute)
+  const currentSrcIdRef = useRef<string | null>(null)
+
   // Determine if we should show the bar
   const showBar = !!audioTrack
 
@@ -163,6 +167,11 @@ export function AudioPlayerBar() {
     return media.videoUrl
   }, [])
 
+  // Get a unique ID for a track (to detect source changes reliably)
+  const getTrackId = useCallback((media: MediaItem) => {
+    return media.isJellyfin ? `jf-${media.jellyfinId}` : media.id
+  }, [])
+
   // Register the audio element in the store (for AudioPlayerView / AudioVisualizer / SoundSettings)
   useEffect(() => {
     if (audioRef.current && audioRef.current !== audioElementState) {
@@ -171,36 +180,62 @@ export function AudioPlayerBar() {
     }
   }, [audioElementState, setAudioElement])
 
-  // Sync audio element with current audio track
-  useEffect(() => {
+  // Load and play a track on the audio element — used for both initial load and track transitions
+  const loadAndPlay = useCallback((track: MediaItem, shouldPlay: boolean) => {
     const el = audioRef.current
-    if (!el || !audioTrack) return
+    if (!el) return
 
-    const src = getAudioSrc(audioTrack)
-    if (el.src !== src) {
+    const src = getAudioSrc(track)
+    const trackId = getTrackId(track)
+
+    // Only update source if the track has actually changed
+    if (currentSrcIdRef.current !== trackId) {
+      currentSrcIdRef.current = trackId
       setAudioError(null)
       setRetryCount(0)
       el.src = src
-      el.volume = volume
-      el.playbackRate = playbackSpeed
-      el.load()
-    }
+      el.volume = useAppStore.getState().volume
+      el.playbackRate = useAppStore.getState().playbackSpeed
 
-    if (isPlaying) {
+      if (shouldPlay) {
+        // Use canplay event to start playback reliably after source change
+        const onCanPlayThrough = () => {
+          el.play().catch(() => {})
+          el.removeEventListener('canplaythrough', onCanPlayThrough)
+        }
+        el.addEventListener('canplaythrough', onCanPlayThrough)
+        el.load()
+      } else {
+        el.load()
+      }
+    } else if (shouldPlay) {
+      // Same track — just play/pause
       el.play().catch(() => {})
     }
-  }, [audioTrack, getAudioSrc])
+  }, [getAudioSrc, getTrackId])
 
-  // Play/pause sync
+  // Sync audio element with current audio track
+  useEffect(() => {
+    if (!audioTrack) {
+      currentSrcIdRef.current = null
+      return
+    }
+    loadAndPlay(audioTrack, isPlaying)
+  }, [audioTrack, isPlaying, loadAndPlay])
+
+  // Play/pause sync (when isPlaying changes without track change)
   useEffect(() => {
     const el = audioRef.current
     if (!el || !audioTrack) return
     if (isPlaying) {
-      el.play().catch(() => {})
+      // Only play if not already playing (avoid interrupting a playing track)
+      if (el.paused) {
+        el.play().catch(() => {})
+      }
     } else {
       el.pause()
     }
-  }, [isPlaying, audioTrack])
+  }, [isPlaying])
 
   // Volume sync
   useEffect(() => {

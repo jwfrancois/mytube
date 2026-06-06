@@ -162,8 +162,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentMedia: null,
   setCurrentMedia: (media) => {
     if (media && isAudioType(media.type)) {
-      // When setting an audio media, also set the persistent audio track
-      set({ currentMedia: media, isPlaying: !!media, audioTrack: media })
+      // Don't set audioTrack for browsable containers (albums, podcast shows, etc.)
+      // Only set it for actual playable audio tracks
+      const isBrowsableContainer = media.isJellyfin && media.hasChildren && (
+        media.itemType === 'MusicAlbum' ||
+        media.itemType === 'MusicArtist' ||
+        (media.type === 'PODCAST' && media.itemType !== 'Audio')
+      )
+      if (isBrowsableContainer) {
+        // Show the container view but don't start audio playback
+        set({ currentMedia: media })
+      } else {
+        // Playable audio track — set audioTrack for background playback
+        set({ currentMedia: media, isPlaying: !!media, audioTrack: media })
+      }
     } else if (!media) {
       // Clearing currentMedia (going back) — keep audioTrack for background playback
       set({ currentMedia: null })

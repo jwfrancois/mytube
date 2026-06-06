@@ -572,7 +572,7 @@ interface MediaDetailProps {
 }
 
 export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailProps) {
-  const { setCurrentMedia, setAudioQueue, setAudioQueueIndex, setIsPlaying, setAudioTrack } = useAppStore()
+  const { setCurrentMedia, setAudioQueue, setAudioQueueIndex, setIsPlaying, setAudioTrack, setRepeatMode } = useAppStore()
 
   // Jellyfin details
   const [jellyfinDetails, setJellyfinDetails] = useState<JellyfinDetailData | null>(null)
@@ -852,6 +852,9 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
     setAudioQueue(queueItems)
     setAudioQueueIndex(trackIndex)
 
+    // Set repeat mode to 'all' for album playback (continuous play through all tracks)
+    setRepeatMode('all')
+
     // Set current media to the clicked track
     const clickedTrack = queueItems[trackIndex]
     if (clickedTrack) {
@@ -859,7 +862,7 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
       setAudioTrack(clickedTrack)
       setIsPlaying(true)
     }
-  }, [jellyfinDetails, jellyfinId, setCurrentMedia, setAudioQueue, setAudioQueueIndex, setIsPlaying, setAudioTrack])
+  }, [jellyfinDetails, jellyfinId, setCurrentMedia, setAudioQueue, setAudioQueueIndex, setIsPlaying, setAudioTrack, setRepeatMode])
 
   // Handle "Play All" for music album
   const handlePlayAllTracks = useCallback(() => {

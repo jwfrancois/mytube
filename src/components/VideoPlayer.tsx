@@ -234,10 +234,15 @@ function useHlsVideoPlayer(
             const hls = new hlsModule({
               enableWorker: true,
               lowLatencyMode: false,
-              xhrSetup: (xhr: XMLHttpRequest) => {
-                // hls.js needs to be able to fetch from Jellyfin directly
-                // The URL is already the full Jellyfin URL with api_key
-              },
+              // The m3u8 URL is now a relative path to our proxy,
+              // so all segment requests will also go through the proxy
+              // (no CORS issues since everything is same-origin)
+              manifestLoadingTimeOut: 60000,      // 60s — Jellyfin transcode startup can be slow
+              manifestLoadingMaxRetry: 3,
+              levelLoadingTimeOut: 60000,
+              levelLoadingMaxRetry: 3,
+              fragLoadingTimeOut: 60000,
+              fragLoadingMaxRetry: 3,
             })
             hlsRef.current = hls
 
@@ -280,7 +285,67 @@ function useHlsVideoPlayer(
         fallbackToNextStrategy(strat)
       }
     } else {
-      // Direct or transcode: set src on video element
+      // Direct or transcode: fetch the URL first to check if it returns HLS JSON
+      try {
+        const res = await fetch(url, { method: 'HEAD' })
+        const contentType = res.headers.get('content-type') || ''
+
+        if (contentType.includes('application/json')) {
+          // API returned JSON (likely needs HLS) — parse and use hls.js
+          const fullRes = await fetch(url)
+          const data = await fullRes.json()
+
+          if (data.format === 'hls' && data.url) {
+            const hlsModule = await loadHls()
+            if (!hlsModule || !hlsModule.isSupported()) {
+              throw new Error('HLS not available for this stream')
+            }
+
+            const hls = new hlsModule({
+              enableWorker: true,
+              lowLatencyMode: false,
+              manifestLoadingTimeOut: 60000,
+              manifestLoadingMaxRetry: 3,
+              levelLoadingTimeOut: 60000,
+              levelLoadingMaxRetry: 3,
+              fragLoadingTimeOut: 60000,
+              fragLoadingMaxRetry: 3,
+            })
+            hlsRef.current = hls
+            hls.loadSource(data.url)
+            hls.attachMedia(video)
+
+            hls.on(hlsModule.Events.MANIFEST_PARSED, () => {
+              video.play().catch(() => {})
+            })
+
+            hls.on(hlsModule.Events.ERROR, (_event, errorData) => {
+              if (errorData.fatal) {
+                switch (errorData.type) {
+                  case hlsModule.ErrorTypes.NETWORK_ERROR:
+                    hls.startLoad()
+                    break
+                  case hlsModule.ErrorTypes.MEDIA_ERROR:
+                    hls.recoverMediaError()
+                    break
+                  default:
+                    destroyHls()
+                    fallbackToNextStrategy(strat)
+                    break
+                }
+              }
+            })
+
+            setCurrentSrc(data.url)
+            setStrategy('hls')
+            return
+          }
+        }
+      } catch {
+        // HEAD request failed or not JSON — fall through to direct src assignment
+      }
+
+      // Set src on video element directly
       video.src = url
       setCurrentSrc(url)
       video.load()

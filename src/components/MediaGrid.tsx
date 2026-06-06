@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useAppStore, MediaType } from '@/store/useAppStore'
 import { MediaCard } from '@/components/MediaCard'
 import { HeroBanner } from '@/components/HeroBanner'
@@ -47,6 +47,19 @@ function HorizontalShelf({
   const [expanded, setExpanded] = useState(false)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
+  const [scrollMounted, setScrollMounted] = useState(false)
+
+  useEffect(() => {
+    // Defer mount state and scroll check to after paint
+    const raf = requestAnimationFrame(() => {
+      setScrollMounted(true)
+      if (!scrollRef.current) return
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current
+      setCanScrollLeft(scrollLeft > 0)
+      setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 1)
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [])
 
   const checkScroll = () => {
     if (!scrollRef.current) return
@@ -107,7 +120,7 @@ function HorizontalShelf({
         // Horizontal scrollable row — Netflix style
         <div className="relative group/shelf">
           {/* Left scroll button */}
-          {canScrollLeft && (
+          {scrollMounted && canScrollLeft && (
             <Button
               variant="ghost"
               size="icon"
@@ -139,7 +152,7 @@ function HorizontalShelf({
           </div>
 
           {/* Right scroll button */}
-          {canScrollRight && (
+          {scrollMounted && canScrollRight && (
             <Button
               variant="ghost"
               size="icon"
@@ -151,10 +164,10 @@ function HorizontalShelf({
           )}
 
           {/* Fade edges */}
-          {canScrollLeft && (
+          {scrollMounted && canScrollLeft && (
             <div className="absolute left-0 top-0 bottom-2 w-16 bg-gradient-to-r from-background to-transparent pointer-events-none z-[5]" />
           )}
-          {canScrollRight && (
+          {scrollMounted && canScrollRight && (
             <div className="absolute right-0 top-0 bottom-2 w-16 bg-gradient-to-l from-background to-transparent pointer-events-none z-[5]" />
           )}
         </div>
@@ -165,6 +178,13 @@ function HorizontalShelf({
 
 export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWatchLater, isInWatchLater, onPlay, topSlot, middleSlot, middleSlotAfterSectionId, preBanner }: MediaGridProps) {
   const { activeCategory, sortBy, setSortBy, isLoading } = useAppStore()
+  // Track client-side mount to avoid hydration mismatch (sections load asynchronously)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    // Use rAF to avoid synchronous setState in effect
+    const raf = requestAnimationFrame(() => setMounted(true))
+    return () => cancelAnimationFrame(raf)
+  }, [])
 
   const categoryTitle: Record<MediaType, string> = {
     ALL: 'Home',
@@ -209,7 +229,8 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
   }
 
   // If sections are provided, render them as horizontal shelves with hero banner
-  if (sections && sections.length > 0) {
+  // Only render sections after client mount to avoid hydration mismatch
+  if (mounted && sections && sections.length > 0) {
     // Build hero items from top-rated items across all sections
     const heroItems = items
       .filter(i => i.thumbnail && (i.type === 'MOVIE' || i.type === 'TV_SHOW' || i.type === 'COLLECTION'))
