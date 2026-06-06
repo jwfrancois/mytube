@@ -1054,6 +1054,39 @@ export function VideoPlayer() {
     }
   }, [videoElementState])
 
+  // Handle Live TV stream — fetches the stream API and plays the result
+  const handleLiveTVStream = useCallback(async (channelId: string) => {
+    try {
+      const streamUrl = `/api/livetv/stream/${encodeURIComponent(channelId)}`
+      const res = await fetch(streamUrl)
+
+      const contentType = res.headers.get('content-type') || ''
+
+      if (contentType.includes('application/json')) {
+        // HDHomerun or Jellyfin Live TV: returns JSON with the HLS URL
+        const data = await res.json()
+        if (data.format === 'hls' && data.url) {
+          playDirectM3U8(data.url)
+        } else if (data.url) {
+          playDirectM3U8(data.url)
+        } else {
+          setVideoError('No playable stream URL found for this channel.')
+          setVideoLoading(false)
+        }
+      } else if (contentType.includes('mpegurl') || streamUrl.includes('.m3u8')) {
+        // Built-in channels: returns M3U8 playlist directly
+        playDirectM3U8(streamUrl)
+      } else {
+        // Try treating the response as M3U8 anyway (fallback)
+        playDirectM3U8(streamUrl)
+      }
+    } catch (err) {
+      console.error('Live TV stream fetch failed:', err)
+      setVideoError('Failed to load Live TV stream.')
+      setVideoLoading(false)
+    }
+  }, [playDirectM3U8, setVideoError, setVideoLoading])
+
   // Sync video element volume/speed with shared store state
   useEffect(() => {
     const video = videoRef.current
@@ -1086,13 +1119,12 @@ export function VideoPlayer() {
     )
     const isAudio = isAudioType(currentMedia.type) && !isBrowsableContainer
 
-    // Live TV — play the M3U8 stream directly
+    // Live TV — play the stream through our proxy
     if (currentMedia.type === 'LIVETV') {
-      const streamUrl = currentMedia.videoUrl
-      if (streamUrl) {
-        // Use our Live TV stream proxy to avoid CORS issues
-        const proxyUrl = `/api/livetv/stream/${encodeURIComponent(currentMedia.id)}`
-        playDirectM3U8(proxyUrl)
+      const channelId = currentMedia.id
+      if (channelId) {
+        // Use our Live TV stream API to get the stream URL
+        handleLiveTVStream(channelId)
       } else {
         setVideoError('No stream URL available for this channel.')
         setVideoLoading(false)
@@ -1646,6 +1678,12 @@ export function VideoPlayer() {
                     <Badge className="text-xs bg-red-500 text-white gap-1">
                       <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
                       LIVE
+                    </Badge>
+                  )}
+                  {isLiveTV && currentMedia.channel?.startsWith('OTA') && (
+                    <Badge variant="outline" className="text-xs text-amber-400 border-amber-500/30 gap-1">
+                      <Radio className="h-3 w-3" />
+                      HDHomerun OTA
                     </Badge>
                   )}
                   {currentMedia.genre && (

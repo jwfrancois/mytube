@@ -57,3 +57,17 @@ model JellyfinServer {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+model HDHomerunTuner {
+  id            String   @id @default(cuid())
+  name          String   @default("HDHomeRun")
+  tunerIp       String                   // IP address of the HDHomeRun device
+  tunerCount    Int      @default(2)     // Number of tuners available
+  model         String   @default("")    // Device model name
+  firmware      String   @default("")    // Firmware version
+  deviceId      String   @default("")    // HDHomeRun device ID
+  connected     Boolean  @default(false)
+  lastConnected DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

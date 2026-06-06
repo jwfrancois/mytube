@@ -81,9 +81,9 @@ export function LiveTVSection({ onPlay, onViewAll }: LiveTVSectionProps) {
       videoUrl: channel.streamUrl,
       duration: 'LIVE',
       releaseYear: new Date().getFullYear(),
-      artist: channel.source,
+      artist: channel.source === 'hdhomerun' ? 'HDHomerun OTA' : channel.source,
       views: 0,
-      channel: channel.source,
+      channel: channel.source === 'hdhomerun' ? `OTA Ch. ${channel.guideNumber || ''}` : channel.source,
       createdAt: new Date().toISOString(),
       isJellyfin: channel.source === 'jellyfin',
       jellyfinId: channel.source === 'jellyfin' ? channel.id.replace('jellyfin-livetv-', '') : undefined,
@@ -102,15 +102,16 @@ export function LiveTVSection({ onPlay, onViewAll }: LiveTVSectionProps) {
     })
   }, [])
 
-  // Show featured channels (news + a mix of categories)
+  // Show featured channels (news + a mix of categories, prioritize HDHomerun OTA channels)
   const featuredChannels = channels.length > 0
     ? [
-        ...channels.filter(ch => ch.category === 'news').slice(0, 3),
-        ...channels.filter(ch => ch.category === 'entertainment').slice(0, 2),
-        ...channels.filter(ch => ch.category === 'movies').slice(0, 2),
-        ...channels.filter(ch => ch.category === 'sports').slice(0, 2),
-        ...channels.filter(ch => ch.category === 'music').slice(0, 2),
-        ...channels.filter(ch => ch.category === 'science').slice(0, 1),
+        // Show up to 4 HDHomerun channels first (they're the user's actual OTA channels)
+        ...channels.filter(ch => ch.source === 'hdhomerun').slice(0, 4),
+        // Then fill with other sources
+        ...channels.filter(ch => ch.category === 'news' && ch.source !== 'hdhomerun').slice(0, 2),
+        ...channels.filter(ch => ch.category === 'entertainment' && ch.source !== 'hdhomerun').slice(0, 2),
+        ...channels.filter(ch => ch.category === 'movies' && ch.source !== 'hdhomerun').slice(0, 2),
+        ...channels.filter(ch => ch.category === 'sports' && ch.source !== 'hdhomerun').slice(0, 1),
       ].slice(0, 12)
     : []
 
@@ -195,8 +196,27 @@ export function LiveTVSection({ onPlay, onViewAll }: LiveTVSectionProps) {
                   </div>
 
                   {/* Info */}
-                  <h3 className="text-xs font-medium truncate">{channel.name}</h3>
-                  <p className="text-[10px] text-muted-foreground capitalize">{channel.category}</p>
+                  <div className="flex items-center gap-1">
+                    {channel.guideNumber && (
+                      <span className="text-[9px] font-mono text-muted-foreground bg-muted/50 px-1 rounded">
+                        {channel.guideNumber}
+                      </span>
+                    )}
+                    <h3 className="text-xs font-medium truncate">{channel.name}</h3>
+                  </div>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <p className="text-[10px] text-muted-foreground capitalize">{channel.category}</p>
+                    {channel.source === 'hdhomerun' && (
+                      <Badge variant="outline" className="text-[7px] h-3 text-amber-400 border-amber-500/30 px-0.5">
+                        OTA
+                      </Badge>
+                    )}
+                    {channel.hd && (
+                      <Badge variant="outline" className="text-[7px] h-3 text-cyan-400 border-cyan-500/30 px-0.5">
+                        HD
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               )
             })}

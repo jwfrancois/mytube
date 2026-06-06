@@ -142,9 +142,9 @@ export function LiveTVGuide({ onPlay, onBack }: LiveTVGuideProps) {
       videoUrl: channel.streamUrl,
       duration: 'LIVE',
       releaseYear: new Date().getFullYear(),
-      artist: channel.source,
+      artist: channel.source === 'hdhomerun' ? 'HDHomerun OTA' : channel.source,
       views: 0,
-      channel: channel.source,
+      channel: channel.source === 'hdhomerun' ? `OTA Ch. ${channel.guideNumber || ''}` : channel.source,
       createdAt: new Date().toISOString(),
       isJellyfin: channel.source === 'jellyfin',
       jellyfinId: channel.source === 'jellyfin' ? channel.id.replace('jellyfin-livetv-', '') : undefined,
@@ -493,7 +493,14 @@ function ChannelCard({
 
       {/* Channel Info */}
       <div className="p-2.5">
-        <h4 className="text-xs font-semibold truncate">{channel.name}</h4>
+        <div className="flex items-center gap-1.5">
+          {channel.guideNumber && (
+            <span className="text-[10px] font-mono text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
+              {channel.guideNumber}
+            </span>
+          )}
+          <h4 className="text-xs font-semibold truncate">{channel.name}</h4>
+        </div>
         <div className="flex items-center gap-1.5 mt-1">
           <Badge variant="secondary" className="text-[8px] h-4 capitalize">
             {channel.category}
@@ -501,6 +508,17 @@ function ChannelCard({
           {channel.source === 'jellyfin' && (
             <Badge variant="outline" className="text-[8px] h-4 text-emerald-400 border-emerald-500/30">
               NAS
+            </Badge>
+          )}
+          {channel.source === 'hdhomerun' && (
+            <Badge variant="outline" className="text-[8px] h-4 text-amber-400 border-amber-500/30">
+              <Radio className="h-2.5 w-2.5 mr-0.5" />
+              OTA
+            </Badge>
+          )}
+          {channel.hd && (
+            <Badge variant="outline" className="text-[8px] h-4 text-cyan-400 border-cyan-500/30">
+              HD
             </Badge>
           )}
         </div>

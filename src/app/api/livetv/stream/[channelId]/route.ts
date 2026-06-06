@@ -11,6 +11,12 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const format = searchParams.get('format') || 'm3u8' // 'm3u8' | 'direct'
 
+    // Check if it's an HDHomerun channel
+    if (channelId.startsWith('hdhr-')) {
+      const channelNumber = channelId.replace('hdhr-', '')
+      return handleHDHomerunStream(channelNumber, format)
+    }
+
     // Check if it's a Jellyfin live TV channel
     if (channelId.startsWith('jellyfin-')) {
       return handleJellyfinLiveTV(channelId.replace('jellyfin-', ''), format)
@@ -159,6 +165,60 @@ function resolveUrl(url: string, baseUrl: string): string {
 
 function buildProxyUrl(targetUrl: string): string {
   return `/api/livetv/proxy-segment?url=${encodeURIComponent(targetUrl)}`
+}
+
+/**
+ * Handle HDHomerun stream requests.
+ * HDHomerun delivers MPEG-TS which needs to be transcoded to HLS for browser playback.
+ * We return a JSON response pointing to our transcoding mini-service running on port 3010.
+ */
+async function handleHDHomerunStream(channelNumber: string, format: string): Promise<NextResponse> {
+  try {
+    const tuner = await db.hDHomerunTuner.findFirst({
+      where: { connected: true },
+    })
+
+    if (!tuner) {
+      return NextResponse.json(
+        { error: 'No connected HDHomerun tuner found' },
+        { status: 400 }
+      )
+    }
+
+    // Build the raw MPEG-TS stream URL from the HDHomerun device
+    const rawStreamUrl = `http://${tuner.tunerIp}:5004/auto/v${channelNumber}`
+
+    if (format === 'm3u8') {
+      // The transcoding mini-service runs on port 3010 and converts
+      // MPEG-TS to HLS segments on the fly.
+      // Pass tunerIp so the transcoder can start FFmpeg if not already running.
+      const transcoderM3u8Url = `http://localhost:3010/stream/${channelNumber}/index.m3u8?tunerIp=${tuner.tunerIp}`
+      const hlsUrl = `/api/livetv/proxy-segment?url=${encodeURIComponent(transcoderM3u8Url)}`
+
+      return NextResponse.json({
+        format: 'hls',
+        url: hlsUrl,
+        channelId: `hdhr-${channelNumber}`,
+        source: 'hdhomerun',
+        rawStreamUrl,
+        tuner: {
+          id: tuner.id,
+          name: tuner.name,
+          tunerIp: tuner.tunerIp,
+        },
+      })
+    }
+
+    // For direct format, redirect to the raw MPEG-TS stream
+    // Note: Most browsers can't play MPEG-TS directly; this is for non-browser clients
+    return NextResponse.redirect(rawStreamUrl)
+  } catch (error) {
+    console.error('HDHomerun stream error:', error)
+    return NextResponse.json(
+      { error: 'Failed to stream HDHomerun channel' },
+      { status: 500 }
+    )
+  }
 }
 
 /**

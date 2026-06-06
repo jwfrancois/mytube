@@ -15,10 +15,14 @@ export interface LiveTVChannel {
   streamUrl: string
   logoUrl?: string
   description: string
-  source: string // e.g., 'pluto', 'nasa', 'custom', 'jellyfin'
+  source: string // e.g., 'pluto', 'nasa', 'custom', 'jellyfin', 'hdhomerun'
   isFavorite?: boolean
   language?: string
   country?: string
+  guideNumber?: string // HDHomerun channel number (e.g., "7.1")
+  hd?: boolean        // HDHomerun HD flag
+  tunerIp?: string    // HDHomerun tuner IP
+  tunerId?: string    // HDHomerun tuner DB ID
 }
 
 export type LiveTVCategory = 

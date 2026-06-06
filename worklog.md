@@ -756,3 +756,28 @@ Stage Summary:
 - Video player supports Live TV M3U8 streams with low-latency HLS configuration
 - All lint checks pass cleanly
 - Agent browser verified: Live TV section on home page, full guide with category filters, channel playback, no errors
+
+---
+Task ID: HDHR-1
+Agent: Main Agent
+Task: Integrate HDHomerun tuner support for Live TV in the MyTube app
+
+Work Log:
+- Added HDHomerunTuner model to Prisma schema (tunerIp, tunerCount, model, firmware, deviceId, connected, lastConnected)
+- Ran db:push to sync the schema with the SQLite database
+- Created HDHomerun API routes: discover, channels, status, disconnect
+- Created transcoding mini-service at /mini-services/hdhr-transcoder/ on port 3010
+- Uses FFmpeg to transcode MPEG-TS to HLS in real-time
+- Integrated HDHomerun channels into LiveTV channels API
+- Updated LiveTV stream route to handle HDHomerun channels with JSON+HLS response
+- Updated SettingsDialog with HDHomerun tuner configuration section
+- Updated VideoPlayer handleLiveTVStream function for proper stream handling
+- Updated LiveTVSection and LiveTVGuide with OTA/HD badges and channel numbers
+- Started transcoder mini-service and verified all APIs working
+
+Stage Summary:
+- Full HDHomerun integration for OTA Live TV complete
+- Architecture: HDHomerun -> MPEG-TS -> FFmpeg transcoder (port 3010) -> HLS -> hls.js
+- Settings UI allows connecting to tuner by IP, shows device info and channel count
+- Channel lineup auto-fetched and merged with built-in Live TV channels
+
