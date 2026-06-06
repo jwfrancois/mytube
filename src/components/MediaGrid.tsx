@@ -27,6 +27,7 @@ interface MediaGridProps {
   topSlot?: React.ReactNode
   middleSlot?: React.ReactNode
   middleSlotAfterSectionId?: string
+  preBanner?: React.ReactNode
 }
 
 function HorizontalShelf({
@@ -162,7 +163,7 @@ function HorizontalShelf({
   )
 }
 
-export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWatchLater, isInWatchLater, onPlay, topSlot, middleSlot, middleSlotAfterSectionId }: MediaGridProps) {
+export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWatchLater, isInWatchLater, onPlay, topSlot, middleSlot, middleSlotAfterSectionId, preBanner }: MediaGridProps) {
   const { activeCategory, sortBy, setSortBy, isLoading } = useAppStore()
 
   const categoryTitle: Record<MediaType, string> = {
@@ -221,6 +222,9 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
 
     return (
       <div className="pb-6">
+        {/* Pre-Banner — Time-of-day context banner (before hero) */}
+        {preBanner && activeCategory === 'ALL' && preBanner}
+
         {/* Hero Banner — only on Home page */}
         {activeCategory === 'ALL' && heroItems.length > 0 && (
           <HeroBanner

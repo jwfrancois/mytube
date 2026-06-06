@@ -120,6 +120,10 @@ interface AppState {
   repeatMode: 'none' | 'all' | 'one'
   setRepeatMode: (mode: 'none' | 'all' | 'one') => void
 
+  // Knowledge Graph view
+  showKnowledgeGraph: boolean
+  setShowKnowledgeGraph: (show: boolean) => void
+
   // Persistent Audio Track (decoupled from currentMedia for background playback)
   audioTrack: MediaItem | null
   setAudioTrack: (track: MediaItem | null) => void
@@ -303,4 +307,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     audioQueue: [],
     audioQueueIndex: -1,
   }),
+
+  // Knowledge Graph
+  showKnowledgeGraph: false,
+  setShowKnowledgeGraph: (show) => set({ showKnowledgeGraph: show }),
 }))

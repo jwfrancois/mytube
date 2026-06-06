@@ -43,6 +43,8 @@ import {
 import { MediaDetail } from '@/components/MediaDetail'
 import { AudioVisualizer } from '@/components/AudioVisualizer'
 import { SoundSettings } from '@/components/SoundSettings'
+import { AICompanionPanel } from '@/components/AICompanionPanel'
+import { VisualMusicExperience } from '@/components/VisualMusicExperience'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 
@@ -503,54 +505,12 @@ function AudioPlayerView({
 
           {/* Audio Player Layout */}
           <div className="flex flex-col items-center">
-            {/* Visualizer + Album Art */}
-            <div className="relative w-full max-w-lg aspect-square mb-6">
-              {/* Background visualizer */}
-              <div className="absolute inset-0 rounded-2xl overflow-hidden opacity-60">
-                <AudioVisualizer
-                  audioElement={audioElement}
-                  isPlaying={isPlaying}
-                  colorScheme={
-                    currentMedia.type === 'PODCAST' ? 'emerald' :
-                    currentMedia.type === 'AUDIOBOOK' ? 'amber' : 'purple'
-                  }
-                  height={400}
-                  className="w-full h-full"
-                />
-              </div>
-
-              {/* Gradient overlay */}
-              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/30 to-background/80 rounded-2xl" />
-
-              {/* Album art / Spinning disc */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="relative">
-                  <div
-                    className={cn(
-                      'w-48 h-48 sm:w-56 sm:h-56 md:w-64 md:h-64 rounded-full overflow-hidden shadow-2xl ring-4 ring-white/10',
-                      isPlaying && 'animate-spin'
-                    )}
-                    style={{ animationDuration: '8s' }}
-                  >
-                    {currentMedia.thumbnail ? (
-                      <img
-                        src={currentMedia.thumbnail}
-                        alt={currentMedia.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gradient-to-br from-purple-500 via-pink-500 to-rose-500 flex items-center justify-center">
-                        <TypeIconComponent className="h-16 w-16 text-white/80" />
-                      </div>
-                    )}
-                  </div>
-                  {/* Center hole */}
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-8 h-8 rounded-full bg-background/80 ring-2 ring-white/20" />
-                  </div>
-                </div>
-              </div>
-            </div>
+            {/* Visual Music Experience (replaces static visualizer area) */}
+            <VisualMusicExperience
+              currentMedia={currentMedia}
+              audioElement={audioElement}
+              isPlaying={isPlaying}
+            />
 
             {/* Track Info */}
             <div className="w-full max-w-lg text-center mb-4">
@@ -859,6 +819,7 @@ export function VideoPlayer() {
   const [disliked, setDisliked] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const [isVideoPlaying, setIsVideoPlaying] = useState(false)
+  const [companionOpen, setCompanionOpen] = useState(false)
 
   // HLS video player hook for Jellyfin video content
   const {
@@ -1290,6 +1251,12 @@ export function VideoPlayer() {
                 </div>
               </div>
             )}
+
+            {/* AI Companion Toggle & Panel */}
+            <AICompanionPanel
+              isOpen={companionOpen}
+              onToggle={() => setCompanionOpen(!companionOpen)}
+            />
           </div>
 
           {/* Strategy indicator */}

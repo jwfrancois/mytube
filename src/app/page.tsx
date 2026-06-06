@@ -13,6 +13,10 @@ import { SettingsDialog } from '@/components/SettingsDialog'
 import { JellyfinBrowser } from '@/components/JellyfinBrowser'
 import { AIConcierge } from '@/components/AIConcierge'
 import { AIRadioStations } from '@/components/AIRadioStations'
+import { SemanticDiscovery } from '@/components/SemanticDiscovery'
+import { SmartCollections } from '@/components/SmartCollections'
+import { LivingHomeScreen } from '@/components/LivingHomeScreen'
+import { MediaKnowledgeGraph } from '@/components/MediaKnowledgeGraph'
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
 import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers } from 'lucide-react'
@@ -38,6 +42,8 @@ export default function Home() {
     setJellyfinConnected,
     setJellyfinServer,
     setCurrentMedia,
+    showKnowledgeGraph,
+    setShowKnowledgeGraph,
   } = useAppStore()
 
   const {
@@ -301,6 +307,16 @@ export default function Home() {
     if (isSearching || searchQuery) return <SearchResults onSearch={handleSearch} />
     if (activeCategory === 'JELLYFIN') return <JellyfinBrowser />
 
+    // Knowledge Graph full-screen view
+    if (showKnowledgeGraph) {
+      return (
+        <MediaKnowledgeGraph
+          onPlay={handlePlay}
+          onClose={() => setShowKnowledgeGraph(false)}
+        />
+      )
+    }
+
     // During SSR/hydration, render a consistent loading state to prevent mismatch.
     // After mount, localStorage data (watchHistory/watchLater) is available,
     // so we can render the full sections-based UI.
@@ -354,8 +370,15 @@ export default function Home() {
           onRemoveWatchLater={handleRemoveWatchLater}
           isInWatchLater={handleIsInWatchLater}
           onPlay={handlePlay}
+          preBanner={<LivingHomeScreen mediaItems={mediaItems} onPlay={handlePlay} />}
           topSlot={<AIConcierge onPlay={handlePlay} />}
-          middleSlot={<AIRadioStations onPlay={handlePlay} />}
+          middleSlot={(
+            <>
+              <AIRadioStations onPlay={handlePlay} />
+              <SemanticDiscovery onPlay={handlePlay} />
+              <SmartCollections onPlay={handlePlay} />
+            </>
+          )}
           middleSlotAfterSectionId={radioInsertIndex > 0 ? sections[radioInsertIndex - 1]?.id : undefined}
         />
       )
