@@ -112,14 +112,8 @@ export default function Home() {
         autoConnectAttemptedRef.current = true
 
         try {
-          const connectRes = await fetch('/api/jellyfin/connect', {
+          const connectRes = await fetch('/api/jellyfin/auto-connect', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              serverUrl: 'https://manitou.dyabavadra.com',
-              username: 'dyabavadra',
-              password: 'bonjour66.',
-            }),
           })
 
           if (connectRes.ok) {

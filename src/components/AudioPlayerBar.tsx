@@ -198,13 +198,31 @@ export function AudioPlayerBar() {
       el.playbackRate = useAppStore.getState().playbackSpeed
 
       if (shouldPlay) {
-        // Use canplay event to start playback reliably after source change
-        const onCanPlayThrough = () => {
+        // Listen for multiple ready events to start playback reliably
+        let played = false
+        const tryPlay = () => {
+          if (played) return
+          played = true
           el.play().catch(() => {})
-          el.removeEventListener('canplaythrough', onCanPlayThrough)
+          el.removeEventListener('canplaythrough', tryPlay)
+          el.removeEventListener('canplay', tryPlay)
+          el.removeEventListener('loadeddata', tryPlay)
         }
-        el.addEventListener('canplaythrough', onCanPlayThrough)
+        el.addEventListener('canplaythrough', tryPlay)
+        el.addEventListener('canplay', tryPlay)
+        el.addEventListener('loadeddata', tryPlay)
         el.load()
+
+        // Safety timeout: try to play after 3 seconds even if no event fires
+        setTimeout(() => {
+          if (!played) {
+            played = true
+            el.play().catch(() => {})
+            el.removeEventListener('canplaythrough', tryPlay)
+            el.removeEventListener('canplay', tryPlay)
+            el.removeEventListener('loadeddata', tryPlay)
+          }
+        }, 3000)
       } else {
         el.load()
       }

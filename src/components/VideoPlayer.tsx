@@ -165,6 +165,7 @@ function useHlsVideoPlayer(
   const [currentSrc, setCurrentSrc] = useState<string | null>(null)
   const retryCountRef = useRef(0)
   const maxRetries = 3
+  const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Clean up hls.js instance
   const destroyHls = useCallback(() => {
@@ -206,6 +207,12 @@ function useHlsVideoPlayer(
     destroyHls()
     setVideoError(null)
     setVideoLoading(true)
+    // Clear any existing loading timeout
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current)
+    // Safety timeout: clear loading state after 15 seconds if no canplay/playing event fires
+    loadingTimeoutRef.current = setTimeout(() => {
+      setVideoLoading(false)
+    }, 15000)
     setStrategy(strat)
 
     const url = buildStreamUrl(strat)
@@ -250,6 +257,7 @@ function useHlsVideoPlayer(
             hls.attachMedia(video)
 
             hls.on(hlsModule.Events.MANIFEST_PARSED, () => {
+              setVideoLoading(false)
               video.play().catch(() => {})
             })
 
@@ -316,6 +324,7 @@ function useHlsVideoPlayer(
             hls.attachMedia(video)
 
             hls.on(hlsModule.Events.MANIFEST_PARSED, () => {
+              setVideoLoading(false)
               video.play().catch(() => {})
             })
 
@@ -401,6 +410,10 @@ function useHlsVideoPlayer(
   }, [strategy, fallbackToNextStrategy, videoRef])
 
   const handleCanPlay = useCallback(() => {
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current)
+      loadingTimeoutRef.current = null
+    }
     setVideoLoading(false)
     setVideoError(null)
   }, [])
@@ -410,11 +423,24 @@ function useHlsVideoPlayer(
   }, [])
 
   const handlePlaying = useCallback(() => {
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current)
+      loadingTimeoutRef.current = null
+    }
     setVideoLoading(false)
+  }, [])
+
+  // Handle video load start — keep loading state accurate
+  const handleLoadStart = useCallback(() => {
+    setVideoLoading(true)
   }, [])
 
   // Reset when media changes
   const resetForNewMedia = useCallback(() => {
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current)
+      loadingTimeoutRef.current = null
+    }
     destroyHls()
     setVideoError(null)
     setVideoLoading(true)
@@ -438,6 +464,10 @@ function useHlsVideoPlayer(
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current)
+        loadingTimeoutRef.current = null
+      }
       destroyHls()
     }
   }, [destroyHls])
@@ -453,9 +483,11 @@ function useHlsVideoPlayer(
     handleCanPlay,
     handleWaiting,
     handlePlaying,
+    handleLoadStart,
     resetForNewMedia,
     manualRetry,
     trySpecificStrategy,
+    destroyHls,
     startPlayback: useCallback(() => tryStrategy('direct'), [tryStrategy]),
   }
 }
@@ -905,9 +937,11 @@ export function VideoPlayer() {
     handleCanPlay,
     handleWaiting,
     handlePlaying,
+    handleLoadStart,
     resetForNewMedia,
     manualRetry,
     trySpecificStrategy,
+    destroyHls,
     startPlayback,
   } = useHlsVideoPlayer(
     videoRef,
@@ -928,7 +962,10 @@ export function VideoPlayer() {
       setLiked(false)
       setDisliked(false)
       setIsVideoPlaying(false)
-      resetForNewMedia()
+      // Immediately destroy hls instance to stop any ongoing playback
+      destroyHls()
+      // Full state reset (videoLoading, strategy, retryCount, currentSrc)
+      // happens in the startPlayback useEffect to avoid double-reset
     }
   }
 
@@ -947,9 +984,13 @@ export function VideoPlayer() {
     video.playbackRate = playbackSpeed
   }, [volume, playbackSpeed])
 
-  // Start playback when a new Jellyfin video is selected
+  // Reset and start playback when a new Jellyfin video is selected
   useEffect(() => {
     if (!currentMedia) return
+
+    // Reset video player state for new media (moved from render-time to avoid double-reset)
+    resetForNewMedia()
+
     const isJellyfin = currentMedia.isJellyfin
     const isBrowsableContainer = isJellyfin && currentMedia.hasChildren && (
       currentMedia.itemType === 'Series' ||
@@ -967,7 +1008,7 @@ export function VideoPlayer() {
     if (isJellyfin && !isAudio && !isBrowsableContainer && currentMedia.jellyfinId) {
       startPlayback()
     }
-  }, [currentMedia?.id, startPlayback])
+  }, [currentMedia?.id, startPlayback, resetForNewMedia])
 
   // Populate audio queue when playing audio content from an album
   useEffect(() => {
@@ -1129,6 +1170,14 @@ export function VideoPlayer() {
   }
 
   const handleBack = () => {
+    // Stop video playback and clean up before navigating away
+    const video = videoRef.current
+    if (video) {
+      video.pause()
+      video.removeAttribute('src')
+      video.load()
+    }
+    destroyHls()
     setCurrentMedia(null)
     queuePopulatedRef.current = null
   }
@@ -1273,6 +1322,7 @@ export function VideoPlayer() {
                 onWaiting={handleWaiting}
                 onPlaying={handlePlaying}
                 onLoadedData={handleCanPlay}
+                onLoadStart={handleLoadStart}
               />
             ) : (
               /* Local video: direct src */
@@ -1290,6 +1340,7 @@ export function VideoPlayer() {
                 onWaiting={handleWaiting}
                 onPlaying={handlePlaying}
                 onLoadedData={handleCanPlay}
+                onLoadStart={handleLoadStart}
               />
             )}
 
