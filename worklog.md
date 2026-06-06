@@ -781,3 +781,32 @@ Stage Summary:
 - Settings UI allows connecting to tuner by IP, shows device info and channel count
 - Channel lineup auto-fetched and merged with built-in Live TV channels
 
+---
+Task ID: 1
+Agent: Main Agent
+Task: Auto-connect HDHomerun tuner, fix video player, integrate Live TV with HDHomerun
+
+Work Log:
+- Read entire codebase to understand existing Live TV infrastructure: API routes (hdhomerun/channels, discover, status, disconnect), LiveTVSection, LiveTVGuide, VideoPlayer, hdhr-transcoder mini-service
+- Created `/src/app/api/hdhomerun/auto-connect/route.ts` — auto-discovery endpoint that: (1) checks for already-connected tuners, (2) tries reconnecting to known tuners, (3) falls back to HDHOMERUN_IP env variable
+- Updated `.env.local` with `HDHOMERUN_IP=10.0.0.187`
+- Updated `src/store/useAppStore.ts` — added `hdhrConnected`, `setHdhrConnected`, `hdhrTunerIp`, `setHdhrTunerIp` state
+- Updated `src/app/page.tsx` — added auto-connect for HDHomerun on app startup (parallel with Jellyfin auto-connect)
+- Rewrote `useHlsVideoPlayer` hook in VideoPlayer.tsx to fix critical video playback bug:
+  - Replaced complex tryStrategy/fallbackToNextStrategy callback chain with simpler ref-based approach
+  - Added `mediaInfoRef` to hold current jellyfinId/isJellyfin/mediaSourceId, avoiding stale closure issues
+  - Created unified `playHlsStream()` function for both live and VOD content
+  - `startPlayback()` now uses refs instead of callbacks for media info, eliminating race conditions
+  - Simplified effect dependency: `[currentMedia?.id]` instead of `[currentMedia?.id, startPlayback, resetForNewMedia, playDirectM3U8, destroyHls]`
+  - Added better console logging with `[VideoPlayer]` prefix
+  - Increased safety timeout to 30s for slow transcode startup
+  - Added retry with `directStream=false` fallback when primary HLS endpoint fails
+- Ensured hdhr-transcoder mini-service is running on port 3010
+- Verified with Agent Browser: home page loads, Live TV guide shows 32 channels across 12 categories, HDHomerun auto-connect runs on startup
+
+Stage Summary:
+- HDHomerun tuner at 10.0.0.187 will auto-connect on app startup via env variable HDHOMERUN_IP
+- When tuner is connected, OTA channels appear in Live TV guide with "OTA" badge
+- Video player rewritten to eliminate stale closure race conditions that prevented video playback
+- Transcoder mini-service (port 3010) converts MPEG-TS to HLS for browser playback
+- Live TV guide fully functional with search, category tabs, favorites, EPG sidebar

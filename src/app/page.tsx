@@ -48,6 +48,9 @@ export default function Home() {
     setShowKnowledgeGraph,
     showLiveTV,
     setShowLiveTV,
+    hdhrConnected,
+    setHdhrConnected,
+    setHdhrTunerIp,
   } = useAppStore()
 
   const {
@@ -136,6 +139,33 @@ export default function Home() {
     }
     checkJellyfin()
   }, [setJellyfinConnected, setJellyfinServer])
+
+  // Auto-connect HDHomerun tuner on mount
+  const hdhrAutoConnectRef = useRef(false)
+
+  useEffect(() => {
+    if (hdhrAutoConnectRef.current) return
+    hdhrAutoConnectRef.current = true
+
+    const autoConnectHDHR = async () => {
+      try {
+        const res = await fetch('/api/hdhomerun/auto-connect', {
+          method: 'POST',
+        })
+
+        if (res.ok) {
+          const data = await res.json()
+          if (data.success && data.tuner) {
+            setHdhrConnected(true)
+            setHdhrTunerIp(data.tuner.tunerIp)
+          }
+        }
+      } catch (err) {
+        console.error('HDHomerun auto-connect failed:', err)
+      }
+    }
+    autoConnectHDHR()
+  }, [setHdhrConnected, setHdhrTunerIp])
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return

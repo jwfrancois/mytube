@@ -149,7 +149,8 @@ function AudioQueueItem({
 }
 
 // ─── HLS Video Player Hook ──────────────────────────────────────────────────
-// Manages hls.js instance lifecycle and automatic fallback from native → hls → transcode
+// Manages hls.js instance lifecycle for video playback.
+// Uses refs for media info to avoid stale closure issues with useCallback chains.
 
 type StreamStrategy = 'direct' | 'hls' | 'transcode'
 
@@ -162,239 +163,202 @@ function useHlsVideoPlayer(
   const hlsRef = useRef<import('hls.js').default | null>(null)
   const [videoError, setVideoError] = useState<string | null>(null)
   const [videoLoading, setVideoLoading] = useState(true)
-  const [strategy, setStrategy] = useState<StreamStrategy>('direct')
+  const [strategy, setStrategy] = useState<StreamStrategy>('hls')
   const [currentSrc, setCurrentSrc] = useState<string | null>(null)
   const retryCountRef = useRef(0)
   const maxRetries = 3
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // Use refs for media info to avoid stale closures in async callbacks
+  const mediaInfoRef = useRef({ jellyfinId, isJellyfin, mediaSourceId })
+  mediaInfoRef.current = { jellyfinId, isJellyfin, mediaSourceId }
+
   // Clean up hls.js instance
   const destroyHls = useCallback(() => {
     if (hlsRef.current) {
-      hlsRef.current.destroy()
+      try { hlsRef.current.destroy() } catch {}
       hlsRef.current = null
     }
   }, [])
 
-  // Build stream URL for a given strategy
-  const buildStreamUrl = useCallback((strat: StreamStrategy): string | null => {
-    if (!isJellyfin || !jellyfinId) return null
-
-    const streamParams = new URLSearchParams()
-    streamParams.set('mediaType', 'video')
-    if (mediaSourceId) {
-      streamParams.set('mediaSourceId', mediaSourceId)
-    }
-
-    if (strat === 'direct') {
-      // Direct play / transcode-when-needed (Jellyfin decides)
-      return `/api/jellyfin/stream/${jellyfinId}?${streamParams.toString()}`
-    } else if (strat === 'hls') {
-      // Request HLS format — the API returns JSON with the .m3u8 URL
-      streamParams.set('streamFormat', 'hls')
-      return `/api/jellyfin/stream/${jellyfinId}?${streamParams.toString()}`
-    } else {
-      // Force transcoding to MP4+AAC
-      streamParams.set('directStream', 'false')
-      return `/api/jellyfin/stream/${jellyfinId}?${streamParams.toString()}`
-    }
-  }, [isJellyfin, jellyfinId, mediaSourceId])
-
-  // Try playing with a given strategy
-  const tryStrategy = useCallback(async (strat: StreamStrategy) => {
+  // Core function to play an HLS stream URL using hls.js
+  const playHlsStream = useCallback(async (hlsUrl: string, isLive: boolean = false) => {
     const video = videoRef.current
-    if (!video) return
+    if (!video) {
+      console.warn('[VideoPlayer] Video element not available for HLS playback')
+      return
+    }
 
     destroyHls()
     setVideoError(null)
     setVideoLoading(true)
-    // Clear any existing loading timeout
     if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current)
-    // Safety timeout: clear loading state after 15 seconds if no canplay/playing event fires
     loadingTimeoutRef.current = setTimeout(() => {
+      console.warn('[VideoPlayer] Safety timeout reached, clearing loading state')
       setVideoLoading(false)
-    }, 15000)
-    setStrategy(strat)
+    }, 30000)
 
-    const url = buildStreamUrl(strat)
-    if (!url) {
+    try {
+      const hlsModule = await loadHls()
+      if (!hlsModule || !hlsModule.isSupported()) {
+        // Try native HLS (Safari)
+        video.src = hlsUrl
+        setCurrentSrc(hlsUrl)
+        video.load()
+        video.play().catch(() => {})
+        return
+      }
+
+      const hlsConfig: any = {
+        enableWorker: true,
+        lowLatencyMode: isLive,
+        manifestLoadingTimeOut: 60000,
+        manifestLoadingMaxRetry: 3,
+        levelLoadingTimeOut: 60000,
+        levelLoadingMaxRetry: 3,
+        fragLoadingTimeOut: 60000,
+        fragLoadingMaxRetry: 3,
+      }
+
+      if (isLive) {
+        hlsConfig.liveSyncDurationCount = 3
+        hlsConfig.liveMaxLatencyDurationCount = 6
+        hlsConfig.liveDurationInfinity = true
+      }
+
+      const hls = new hlsModule(hlsConfig)
+      hlsRef.current = hls
+
+      hls.loadSource(hlsUrl)
+      hls.attachMedia(video)
+
+      hls.on(hlsModule.Events.MANIFEST_PARSED, () => {
+        if (loadingTimeoutRef.current) {
+          clearTimeout(loadingTimeoutRef.current)
+          loadingTimeoutRef.current = null
+        }
+        setVideoLoading(false)
+        setVideoError(null)
+        video.play().catch((err: Error) => {
+          console.warn('[VideoPlayer] Auto-play blocked:', err.message)
+        })
+      })
+
+      hls.on(hlsModule.Events.ERROR, (_event: any, data: any) => {
+        if (data.fatal) {
+          console.error('[VideoPlayer] HLS fatal error:', data.type, data.details)
+          switch (data.type) {
+            case hlsModule.ErrorTypes.NETWORK_ERROR:
+              hls.startLoad()
+              break
+            case hlsModule.ErrorTypes.MEDIA_ERROR:
+              hls.recoverMediaError()
+              break
+            default:
+              destroyHls()
+              setVideoError(isLive
+                ? 'This live stream is currently unavailable. The channel may be offline.'
+                : 'Unable to play this video. The format may not be supported.')
+              setVideoLoading(false)
+              break
+          }
+        }
+      })
+
+      setCurrentSrc(hlsUrl)
+      setStrategy('hls')
+    } catch (err) {
+      console.error('[VideoPlayer] HLS playback setup failed:', err)
+      setVideoError('Failed to set up video playback.')
+      setVideoLoading(false)
+    }
+  }, [videoRef, destroyHls])
+
+  // Start playback for Jellyfin video — fetches the stream URL and plays via HLS
+  const startPlayback = useCallback(async () => {
+    const { jellyfinId: jfId, isJellyfin: jfFlag, mediaSourceId: msId } = mediaInfoRef.current
+    if (!jfFlag || !jfId) {
       setVideoError('No stream URL available.')
       setVideoLoading(false)
       return
     }
 
-    if (strat === 'hls') {
-      // For HLS: first fetch the JSON response to get the .m3u8 URL, then use hls.js
-      try {
-        const res = await fetch(url)
-        if (!res.ok) {
-          throw new Error(`HLS endpoint returned ${res.status}`)
-        }
-        const data = await res.json()
+    const streamParams = new URLSearchParams()
+    streamParams.set('mediaType', 'video')
+    streamParams.set('streamFormat', 'hls')
+    if (msId) streamParams.set('mediaSourceId', msId)
 
-        if (data.format === 'hls' && data.url) {
-          const hlsModule = await loadHls()
-          if (!hlsModule) {
-            throw new Error('hls.js not available')
-          }
+    const url = `/api/jellyfin/stream/${jfId}?${streamParams.toString()}`
 
-          if (hlsModule.isSupported()) {
-            const hls = new hlsModule({
-              enableWorker: true,
-              lowLatencyMode: false,
-              // The m3u8 URL is now a relative path to our proxy,
-              // so all segment requests will also go through the proxy
-              // (no CORS issues since everything is same-origin)
-              manifestLoadingTimeOut: 60000,      // 60s — Jellyfin transcode startup can be slow
-              manifestLoadingMaxRetry: 3,
-              levelLoadingTimeOut: 60000,
-              levelLoadingMaxRetry: 3,
-              fragLoadingTimeOut: 60000,
-              fragLoadingMaxRetry: 3,
-            })
-            hlsRef.current = hls
-
-            hls.loadSource(data.url)
-            hls.attachMedia(video)
-
-            hls.on(hlsModule.Events.MANIFEST_PARSED, () => {
-              setVideoLoading(false)
-              video.play().catch(() => {})
-            })
-
-            hls.on(hlsModule.Events.ERROR, (_event, data) => {
-              if (data.fatal) {
-                switch (data.type) {
-                  case hlsModule.ErrorTypes.NETWORK_ERROR:
-                    // Try to recover from network error
-                    hls.startLoad()
-                    break
-                  case hlsModule.ErrorTypes.MEDIA_ERROR:
-                    hls.recoverMediaError()
-                    break
-                  default:
-                    // Cannot recover — try next strategy
-                    destroyHls()
-                    fallbackToNextStrategy(strat)
-                    break
-                }
-              }
-            })
-
-            setCurrentSrc(data.url)
-          } else {
-            throw new Error('HLS not supported in this browser')
-          }
-        } else {
-          throw new Error('Invalid HLS response')
-        }
-      } catch (err) {
-        console.error('HLS strategy failed:', err)
-        destroyHls()
-        fallbackToNextStrategy(strat)
+    try {
+      const res = await fetch(url)
+      if (!res.ok) {
+        throw new Error(`Stream endpoint returned ${res.status}`)
       }
-    } else {
-      // Direct or transcode: the stream API now always returns HLS JSON for video,
-      // so we parse it and use hls.js just like the 'hls' strategy.
-      try {
-        const res = await fetch(url)
-        const contentType = res.headers.get('content-type') || ''
 
-        if (contentType.includes('application/json')) {
-          const data = await res.json()
+      const contentType = res.headers.get('content-type') || ''
+      let data: any
 
-          if (data.format === 'hls' && data.url) {
-            const hlsModule = await loadHls()
-            if (!hlsModule || !hlsModule.isSupported()) {
-              throw new Error('HLS not available for this stream')
+      if (contentType.includes('application/json')) {
+        data = await res.json()
+      } else {
+        // Try parsing as JSON anyway
+        const text = await res.text()
+        try {
+          data = JSON.parse(text)
+        } catch {
+          throw new Error('Invalid response from stream endpoint')
+        }
+      }
+
+      if (data.format === 'hls' && data.url) {
+        await playHlsStream(data.url, false)
+      } else if (data.url) {
+        await playHlsStream(data.url, false)
+      } else {
+        throw new Error('No HLS URL in response')
+      }
+    } catch (err) {
+      console.error('[VideoPlayer] Start playback failed:', err)
+      // Try fallback: direct stream URL (no HLS format param)
+      if (retryCountRef.current < maxRetries) {
+        retryCountRef.current++
+        console.log(`[VideoPlayer] Retry ${retryCountRef.current}/${maxRetries} with direct URL...`)
+        try {
+          const fallbackParams = new URLSearchParams()
+          fallbackParams.set('mediaType', 'video')
+          if (msId) fallbackParams.set('mediaSourceId', msId)
+          fallbackParams.set('directStream', 'false')
+          const fallbackUrl = `/api/jellyfin/stream/${jfId}?${fallbackParams.toString()}`
+          const fallbackRes = await fetch(fallbackUrl)
+          if (fallbackRes.ok) {
+            const fallbackData = await fallbackRes.json()
+            if (fallbackData.url) {
+              await playHlsStream(fallbackData.url, false)
+              return
             }
-
-            const hls = new hlsModule({
-              enableWorker: true,
-              lowLatencyMode: false,
-              manifestLoadingTimeOut: 60000,
-              manifestLoadingMaxRetry: 3,
-              levelLoadingTimeOut: 60000,
-              levelLoadingMaxRetry: 3,
-              fragLoadingTimeOut: 60000,
-              fragLoadingMaxRetry: 3,
-            })
-            hlsRef.current = hls
-            hls.loadSource(data.url)
-            hls.attachMedia(video)
-
-            hls.on(hlsModule.Events.MANIFEST_PARSED, () => {
-              setVideoLoading(false)
-              video.play().catch(() => {})
-            })
-
-            hls.on(hlsModule.Events.ERROR, (_event, errorData) => {
-              if (errorData.fatal) {
-                switch (errorData.type) {
-                  case hlsModule.ErrorTypes.NETWORK_ERROR:
-                    hls.startLoad()
-                    break
-                  case hlsModule.ErrorTypes.MEDIA_ERROR:
-                    hls.recoverMediaError()
-                    break
-                  default:
-                    destroyHls()
-                    fallbackToNextStrategy(strat)
-                    break
-                }
-              }
-            })
-
-            setCurrentSrc(data.url)
-            setStrategy('hls')
-            return
           }
+        } catch {
+          // Fallback also failed
         }
-
-        // If the response was not JSON (shouldn't happen for video anymore),
-        // try to set the src directly as a last resort
-        console.warn('Stream returned non-HLS response, attempting direct src assignment')
-        video.src = url
-        setCurrentSrc(url)
-        video.load()
-        video.play().catch(() => {})
-      } catch (err) {
-        console.error('Direct/transcode strategy failed:', err)
-        destroyHls()
-        fallbackToNextStrategy(strat)
       }
-    }
-  }, [videoRef, buildStreamUrl, destroyHls])
-
-  // Fallback chain: direct → hls → transcode
-  const fallbackToNextStrategy = useCallback((currentStrat: StreamStrategy) => {
-    if (retryCountRef.current >= maxRetries) {
-      setVideoError('Unable to play this video after multiple attempts. The format may not be supported.')
-      setVideoLoading(false)
-      return
-    }
-    retryCountRef.current += 1
-
-    if (currentStrat === 'direct') {
-      console.log('Direct play failed, trying HLS...')
-      tryStrategy('hls')
-    } else if (currentStrat === 'hls') {
-      console.log('HLS failed, trying transcode...')
-      tryStrategy('transcode')
-    } else {
-      setVideoError('Unable to play this video. The format may not be supported by your browser.')
+      setVideoError('Unable to play this video. The format may not be supported or the server is unreachable.')
       setVideoLoading(false)
     }
-  }, [tryStrategy])
+  }, [playHlsStream])
 
-  // Handle video element error (for direct/transcode strategies)
+  // Play a direct M3U8 URL (for Live TV channels)
+  const playDirectM3U8 = useCallback(async (m3u8Url: string) => {
+    await playHlsStream(m3u8Url, true)
+  }, [playHlsStream])
+
+  // Handle video element error (for direct/native strategies)
   const handleVideoError = useCallback(() => {
     const video = videoRef.current
     if (!video) return
     const error = video.error
     if (!error) return
 
-    // Only handle errors for non-HLS strategies (HLS is handled by hls.js events)
     if (strategy === 'hls') return
 
     const errorMsg = error.code === MediaError.MEDIA_ERR_ABORTED
@@ -407,11 +371,10 @@ function useHlsVideoPlayer(
             ? 'The video format is not supported by your browser.'
             : 'An unknown error occurred while playing the video.'
 
-    console.warn(`Video error (${strategy}):`, errorMsg)
-
-    // Auto-fallback instead of just showing error
-    fallbackToNextStrategy(strategy)
-  }, [strategy, fallbackToNextStrategy, videoRef])
+    console.warn(`[VideoPlayer] Video element error:`, errorMsg)
+    setVideoError(errorMsg)
+    setVideoLoading(false)
+  }, [strategy, videoRef])
 
   const handleCanPlay = useCallback(() => {
     if (loadingTimeoutRef.current) {
@@ -434,7 +397,6 @@ function useHlsVideoPlayer(
     setVideoLoading(false)
   }, [])
 
-  // Handle video load start — keep loading state accurate
   const handleLoadStart = useCallback(() => {
     setVideoLoading(true)
   }, [])
@@ -453,91 +415,17 @@ function useHlsVideoPlayer(
     setCurrentSrc(null)
   }, [destroyHls])
 
-  // Play a direct M3U8 URL (for Live TV channels)
-  const playDirectM3U8 = useCallback(async (m3u8Url: string) => {
-    const video = videoRef.current
-    if (!video) return
-
-    destroyHls()
-    setVideoError(null)
-    setVideoLoading(true)
-    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current)
-    loadingTimeoutRef.current = setTimeout(() => {
-      setVideoLoading(false)
-    }, 15000)
-
-    try {
-      const hlsModule = await loadHls()
-      if (!hlsModule || !hlsModule.isSupported()) {
-        // Try native HLS (Safari)
-        video.src = m3u8Url
-        setCurrentSrc(m3u8Url)
-        video.load()
-        video.play().catch(() => {})
-        return
-      }
-
-      const hls = new hlsModule({
-        enableWorker: true,
-        lowLatencyMode: true,
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 6,
-        liveDurationInfinity: true,
-        manifestLoadingTimeOut: 30000,
-        manifestLoadingMaxRetry: 4,
-        levelLoadingTimeOut: 30000,
-        levelLoadingMaxRetry: 4,
-        fragLoadingTimeOut: 30000,
-        fragLoadingMaxRetry: 4,
-      })
-      hlsRef.current = hls
-
-      hls.loadSource(m3u8Url)
-      hls.attachMedia(video)
-
-      hls.on(hlsModule.Events.MANIFEST_PARSED, () => {
-        setVideoLoading(false)
-        video.play().catch(() => {})
-      })
-
-      hls.on(hlsModule.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          switch (data.type) {
-            case hlsModule.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad()
-              break
-            case hlsModule.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError()
-              break
-            default:
-              destroyHls()
-              setVideoError('This live stream is currently unavailable. The channel may be offline.')
-              setVideoLoading(false)
-              break
-          }
-        }
-      })
-
-      setCurrentSrc(m3u8Url)
-      setStrategy('hls')
-    } catch (err) {
-      console.error('Live TV M3U8 playback failed:', err)
-      setVideoError('Failed to play live stream.')
-      setVideoLoading(false)
-    }
-  }, [videoRef, destroyHls])
-
-  // Manual retry (user clicks retry button)
+  // Manual retry
   const manualRetry = useCallback(() => {
     retryCountRef.current = 0
-    tryStrategy('hls')
-  }, [tryStrategy])
+    startPlayback()
+  }, [startPlayback])
 
   // Try specific strategy manually
-  const trySpecificStrategy = useCallback((strat: StreamStrategy) => {
+  const trySpecificStrategy = useCallback((_strat: StreamStrategy) => {
     retryCountRef.current = 0
-    tryStrategy(strat)
-  }, [tryStrategy])
+    startPlayback()
+  }, [startPlayback])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -566,7 +454,7 @@ function useHlsVideoPlayer(
     manualRetry,
     trySpecificStrategy,
     destroyHls,
-    startPlayback: useCallback(() => tryStrategy('hls'), [tryStrategy]),
+    startPlayback,
     playDirectM3U8,
   }
 }
@@ -1099,11 +987,7 @@ export function VideoPlayer() {
   useEffect(() => {
     if (!currentMedia) return
 
-    // Always destroy any existing hls instance before starting new playback
-    // This is now done in the effect (not during render) to avoid side effects during render
-    destroyHls()
-
-    // Reset video player state for new media
+    // Reset video player state for new media (this also destroys any existing HLS instance)
     resetForNewMedia()
 
     const isJellyfin = currentMedia.isJellyfin
@@ -1123,7 +1007,6 @@ export function VideoPlayer() {
     if (currentMedia.type === 'LIVETV') {
       const channelId = currentMedia.id
       if (channelId) {
-        // Use our Live TV stream API to get the stream URL
         handleLiveTVStream(channelId)
       } else {
         setVideoError('No stream URL available for this channel.')
@@ -1136,7 +1019,7 @@ export function VideoPlayer() {
     if (isJellyfin && !isAudio && !isBrowsableContainer && currentMedia.jellyfinId) {
       startPlayback()
     }
-  }, [currentMedia?.id, startPlayback, resetForNewMedia, playDirectM3U8, destroyHls])
+  }, [currentMedia?.id]) // Intentionally minimal deps — startPlayback/handleLiveTVStream use refs internally
 
   // Populate audio queue when playing audio content from an album
   useEffect(() => {

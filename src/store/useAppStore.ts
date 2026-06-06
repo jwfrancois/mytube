@@ -128,6 +128,12 @@ interface AppState {
   showLiveTV: boolean
   setShowLiveTV: (show: boolean) => void
 
+  // HDHomerun
+  hdhrConnected: boolean
+  setHdhrConnected: (connected: boolean) => void
+  hdhrTunerIp: string
+  setHdhrTunerIp: (ip: string) => void
+
   // Persistent Audio Track (decoupled from currentMedia for background playback)
   audioTrack: MediaItem | null
   setAudioTrack: (track: MediaItem | null) => void
@@ -331,4 +337,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Live TV
   showLiveTV: false,
   setShowLiveTV: (show) => set({ showLiveTV: show }),
+
+  // HDHomerun
+  hdhrConnected: false,
+  setHdhrConnected: (connected) => set({ hdhrConnected: connected }),
+  hdhrTunerIp: '',
+  setHdhrTunerIp: (ip) => set({ hdhrTunerIp: ip }),
 }))
