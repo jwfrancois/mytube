@@ -21,24 +21,94 @@ export async function GET(
     // Build the appropriate Jellyfin streaming URL based on media type
     let streamUrl: string
     if (mediaType === 'audio' || mediaType === 'music') {
-      // Use Audio endpoint with mp3 transcoding for browser compatibility
-      streamUrl = `${server.serverUrl}/Audio/${itemId}/stream.mp3?MediaSourceId=${mediaSourceId}&api_key=${server.accessToken}&Static=true`
+      // Use universal audio endpoint for best browser compatibility
+      // The /Audio/{id}/universal endpoint automatically handles transcoding if needed
+      streamUrl = `${server.serverUrl}/Audio/${itemId}/universal?UserId=${server.userId}&DeviceId=mytube-web&api_key=${server.accessToken}&Container=mp3,aac,ogg,wav,flac,alac,m4a&TranscodingContainer=mp3&TranscodingProtocol=https&AudioCodec=mp3&MaxStreamingBitrate=320000&StartTimeTicks=0`
     } else if (directStream) {
-      // Try direct stream first — this returns the original file without transcoding.
-      // Most modern browsers can play H.264 + AAC/MP3 in MP4 containers natively.
-      // This avoids the no-sound issue caused by transcoding failures.
-      // If the original file has incompatible codecs, the browser will show an error,
-      // and the player can retry with transcode mode.
-      streamUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSourceId}&api_key=${server.accessToken}`
+      // For video: Use the playback info API to get the best stream URL
+      // This allows Jellyfin to decide whether to transcode or direct stream
+      try {
+        const playbackInfoUrl = `${server.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${server.userId}&MaxStreamingBitrate=20000000&StartTimeTicks=0&AutoOpenLiveStream=true`
+        const playbackController = new AbortController()
+        const playbackTimeout = setTimeout(() => playbackController.abort(), 10000)
+
+        const playbackRes = await fetch(playbackInfoUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Emby-Token': server.accessToken,
+          },
+          body: JSON.stringify({
+            DeviceProfile: {
+              MaxStreamingBitrate: 20000000,
+              MaxStaticBitrate: 20000000,
+              MusicStreamingTranscodingBitrate: 320000,
+              DirectPlayProfiles: [
+                { Container: 'mp4,m4v,mkv,webm,avi,mov', AudioCodec: 'aac,mp3,opus,vorbis,flac,alac', VideoCodec: 'h264,h265,hevc,vp8,vp9,av1', Type: 'Video' },
+                { Container: 'mp3,aac,ogg,wav,flac,alac,m4a,wma', AudioCodec: 'mp3,aac,opus,vorbis,flac,alac', Type: 'Audio' },
+              ],
+              TranscodingProfiles: [
+                { Container: 'mp4', AudioCodec: 'aac', VideoCodec: 'h264', Type: 'Video', Context: 'Streaming', Protocol: 'https', MaxAudioChannels: '2' },
+                { Container: 'mp3', AudioCodec: 'mp3', Type: 'Audio', Context: 'Streaming', Protocol: 'https' },
+              ],
+              CodecProfiles: [],
+              SubtitleProfiles: [
+                { Format: 'vtt', Method: 'External' },
+                { Format: 'srt', Method: 'External' },
+              ],
+            },
+          }),
+          signal: playbackController.signal,
+        })
+
+        clearTimeout(playbackTimeout)
+
+        if (playbackRes.ok) {
+          const playbackData = await playbackRes.json()
+          const mediaSource = playbackData.MediaSources?.[0]
+
+          if (mediaSource) {
+            if (mediaSource.SupportsDirectPlay || mediaSource.SupportsDirectStream) {
+              // Direct play/stream is supported — use the direct stream URL
+              const directUrl = mediaSource.DirectStreamUrl
+              if (directUrl) {
+                streamUrl = directUrl.startsWith('http')
+                  ? directUrl
+                  : `${server.serverUrl}${directUrl}`
+              } else {
+                // Fallback to static direct stream
+                streamUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${server.accessToken}`
+              }
+            } else if (mediaSource.TranscodingUrl) {
+              // Transcoding needed — use Jellyfin's recommended transcoding URL
+              const transcodeUrl = mediaSource.TranscodingUrl
+              streamUrl = transcodeUrl.startsWith('http')
+                ? transcodeUrl
+                : `${server.serverUrl}${transcodeUrl}`
+            } else {
+              // No stream info — fallback to direct stream
+              streamUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSourceId}&api_key=${server.accessToken}`
+            }
+          } else {
+            streamUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSourceId}&api_key=${server.accessToken}`
+          }
+        } else {
+          // Playback info failed — fallback to direct stream
+          streamUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSourceId}&api_key=${server.accessToken}`
+        }
+      } catch (err) {
+        // Playback info request failed — fallback to direct stream
+        console.error('Playback info error, using direct stream:', err)
+        streamUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSourceId}&api_key=${server.accessToken}`
+      }
     } else {
-      // Fallback: Use transcoding parameters for browser-compatible playback
-      // This ensures both video (H.264) and audio (AAC/MP3) are in formats the browser can play
+      // Fallback transcoding: Use explicit codec parameters for browser-compatible playback
       const tparams = new URLSearchParams({
         MediaSourceId: mediaSourceId,
         api_key: server.accessToken,
         VideoCodec: 'h264',
-        AudioCodec: 'aac,mp3',
-        Container: 'mp4,m4a',
+        AudioCodec: 'aac',
+        Container: 'mp4',
         TranscodingMaxAudioChannels: '2',
         SegmentContainer: 'mp4',
         MinSegments: '1',

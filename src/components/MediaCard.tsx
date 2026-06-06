@@ -12,6 +12,9 @@ import {
   BookmarkPlus,
   Bookmark,
   Check,
+  FolderOpen,
+  ChevronRight,
+  Server,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -53,11 +56,37 @@ const typeIcons: Record<string, string> = {
   AUDIOBOOK: '📖',
 }
 
+const typeLabels: Record<string, string> = {
+  MOVIE: 'Movie',
+  TV_SHOW: 'TV',
+  MUSIC: 'Music',
+  PODCAST: 'Pod',
+  AUDIOBOOK: 'Book',
+}
+
+const itemtypeLabels: Record<string, string> = {
+  Series: 'Series',
+  Season: 'Season',
+  Episode: 'Episode',
+  MusicAlbum: 'Album',
+  MusicArtist: 'Artist',
+  AudioBook: 'Audiobook',
+  Movie: 'Movie',
+  Audio: 'Track',
+  CollectionFolder: 'Library',
+  UserView: 'Library',
+}
+
 export function MediaCard({ item, onWatchLater, onRemoveWatchLater, isInWatchLater: isInWatchLaterProp, onPlay }: MediaCardProps) {
   const { setCurrentMedia } = useAppStore()
+  const isJellyfinFolder = item.isJellyfin && item.hasChildren
 
   const handleClick = () => {
-    if (onPlay) {
+    if (isJellyfinFolder) {
+      // For Jellyfin items with children (series, albums, etc.),
+      // open the detail/player view which shows seasons/episodes/tracks
+      setCurrentMedia(item)
+    } else if (onPlay) {
       onPlay(item)
     } else {
       setCurrentMedia(item)
@@ -75,6 +104,11 @@ export function MediaCard({ item, onWatchLater, onRemoveWatchLater, isInWatchLat
 
   const watchLaterActive = isInWatchLaterProp ?? false
 
+  // Determine the badge label
+  const badgeLabel = isJellyfinFolder
+    ? (itemtypeLabels[item.itemType] || typeLabels[item.type] || item.type)
+    : (typeLabels[item.type] || item.type)
+
   return (
     <Card
       className="group cursor-pointer border-0 shadow-none hover:shadow-md transition-all duration-200 overflow-hidden bg-transparent"
@@ -91,23 +125,40 @@ export function MediaCard({ item, onWatchLater, onRemoveWatchLater, isInWatchLat
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-muted to-muted-foreground/10">
-            <span className="text-4xl">{typeIcons[item.type] || '🎬'}</span>
+            {isJellyfinFolder ? (
+              <FolderOpen className="h-10 w-10 text-muted-foreground/50" />
+            ) : (
+              <span className="text-4xl">{typeIcons[item.type] || '🎬'}</span>
+            )}
           </div>
         )}
 
         {/* Duration badge */}
-        {item.duration && (
+        {item.duration && !isJellyfinFolder && (
           <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium">
             {item.duration}
           </div>
         )}
 
-        {/* Hover overlay */}
+        {/* Child count badge for folders */}
+        {isJellyfinFolder && item.childCount > 0 && (
+          <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs px-1.5 py-0.5 rounded font-medium">
+            {item.childCount} items
+          </div>
+        )}
+
+        {/* Hover overlay - different for folders vs playable items */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
           <div className="opacity-0 group-hover:opacity-100 transition-opacity">
-            <div className="w-12 h-12 bg-black/70 rounded-full flex items-center justify-center">
-              <Play className="h-6 w-6 text-white fill-white ml-0.5" />
-            </div>
+            {isJellyfinFolder ? (
+              <div className="w-12 h-12 bg-black/70 rounded-full flex items-center justify-center">
+                <ChevronRight className="h-6 w-6 text-white" />
+              </div>
+            ) : (
+              <div className="w-12 h-12 bg-black/70 rounded-full flex items-center justify-center">
+                <Play className="h-6 w-6 text-white fill-white ml-0.5" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -138,16 +189,29 @@ export function MediaCard({ item, onWatchLater, onRemoveWatchLater, isInWatchLat
             variant="outline"
             className={cn("text-[10px] px-1.5 py-0 h-5 backdrop-blur-sm", typeColors[item.type])}
           >
-            {item.type === 'TV_SHOW' ? 'TV' : item.type === 'PODCAST' ? 'Pod' : item.type === 'AUDIOBOOK' ? 'Book' : item.type}
+            {badgeLabel}
           </Badge>
         </div>
+
+        {/* Jellyfin badge */}
+        {item.isJellyfin && (
+          <div className="absolute top-2 left-2 mt-6">
+            <Badge
+              variant="outline"
+              className="text-[8px] px-1 py-0 h-4 backdrop-blur-sm bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-0.5"
+            >
+              <Server className="h-2 w-2" />
+              NAS
+            </Badge>
+          </div>
+        )}
       </div>
 
       {/* Info */}
       <div className="flex gap-3 mt-3">
         <Avatar className="h-9 w-9 shrink-0 mt-0.5">
-          <AvatarFallback className="text-xs bg-muted">
-            {item.channel?.charAt(0) || item.artist?.charAt(0) || 'M'}
+          <AvatarFallback className={cn("text-xs", item.isJellyfin ? "bg-emerald-500/10 text-emerald-500" : "bg-muted")}>
+            {item.isJellyfin ? <Server className="h-4 w-4" /> : (item.channel?.charAt(0) || item.artist?.charAt(0) || 'M')}
           </AvatarFallback>
         </Avatar>
         <div className="flex-1 min-w-0">
@@ -155,13 +219,23 @@ export function MediaCard({ item, onWatchLater, onRemoveWatchLater, isInWatchLat
             {item.title}
           </h3>
           <p className="text-xs text-muted-foreground mt-1 truncate">
-            {item.channel || item.artist}
+            {item.channel || item.artist || (item.isJellyfin ? 'Jellyfin NAS' : '')}
           </p>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
-            <Eye className="h-3 w-3" />
-            <span>{formatViews(item.views)}</span>
-            <span>•</span>
-            <span>{item.releaseYear}</span>
+            {item.communityRating && (
+              <>
+                <span>⭐ {item.communityRating.toFixed(1)}</span>
+                <span>•</span>
+              </>
+            )}
+            {!item.isJellyfin && (
+              <>
+                <Eye className="h-3 w-3" />
+                <span>{formatViews(item.views)}</span>
+                <span>•</span>
+              </>
+            )}
+            {item.releaseYear > 0 && <span>{item.releaseYear}</span>}
           </div>
         </div>
         <DropdownMenu>

@@ -22,6 +22,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { Badge } from '@/components/ui/badge'
+import { useEffect, useState, useCallback, useRef } from 'react'
 
 interface SidebarItem {
   icon: React.ElementType
@@ -29,6 +31,31 @@ interface SidebarItem {
   category?: MediaType
   action?: () => void
   active?: boolean
+}
+
+interface JellyfinLibrary {
+  id: string
+  name: string
+  collectionType: string
+}
+
+// Map Jellyfin collection types to our icon components
+const collectionTypeIcons: Record<string, React.ElementType> = {
+  movies: Film,
+  tvshows: Tv,
+  music: Music,
+  podcasts: Mic,
+  books: Headphones,
+  homevideos: Film,
+}
+
+const collectionTypeToMediaType: Record<string, MediaType> = {
+  movies: 'MOVIE',
+  tvshows: 'TV_SHOW',
+  music: 'MUSIC',
+  podcasts: 'PODCAST',
+  books: 'AUDIOBOOK',
+  homevideos: 'MOVIE',
 }
 
 export function Sidebar() {
@@ -42,6 +69,34 @@ export function Sidebar() {
     jellyfinConnected,
     setSettingsOpen,
   } = useAppStore()
+
+  const [jellyfinLibraries, setJellyfinLibraries] = useState<JellyfinLibrary[]>([])
+
+  const librariesFetchedRef = useRef(false)
+
+  // Fetch Jellyfin libraries when connected
+  useEffect(() => {
+    if (!jellyfinConnected || librariesFetchedRef.current) return
+    librariesFetchedRef.current = true
+
+    const loadLibraries = async () => {
+      try {
+        const res = await fetch('/api/jellyfin/libraries')
+        if (res.ok) {
+          const data = await res.json()
+          const libs = (data.items || []).map((item: any) => ({
+            id: item.id,
+            name: item.title,
+            collectionType: item.collectionType || '',
+          })).filter((lib: JellyfinLibrary) => lib.collectionType && collectionTypeToMediaType[lib.collectionType])
+          setJellyfinLibraries(libs)
+        }
+      } catch (err) {
+        console.error('Failed to fetch Jellyfin libraries for sidebar:', err)
+      }
+    }
+    loadLibraries()
+  }, [jellyfinConnected])
 
   const mainItems: SidebarItem[] = [
     { icon: Home, label: 'Home', category: 'ALL', active: activeCategory === 'ALL' },
@@ -191,7 +246,11 @@ export function Sidebar() {
             <>
               <Separator className="my-2" />
               <div className="px-3">
-                <p className="px-3 mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">NAS Server</p>
+                <p className="px-3 mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <Server className="h-3 w-3" />
+                  NAS Server
+                </p>
+                {/* Browse all */}
                 {jellyfinItems.map((item) => (
                   <Button
                     key={item.label}
@@ -204,8 +263,40 @@ export function Sidebar() {
                   >
                     <item.icon className="h-5 w-5 shrink-0" />
                     <span>{item.label}</span>
+                    <Badge variant="outline" className="ml-auto text-[9px] px-1 py-0 h-4 text-emerald-500 border-emerald-500/30">
+                      Online
+                    </Badge>
                   </Button>
                 ))}
+                {/* Individual libraries */}
+                {jellyfinLibraries.length > 0 && (
+                  <div className="ml-2 mt-1">
+                    {jellyfinLibraries.map((lib) => {
+                      const IconComp = collectionTypeIcons[lib.collectionType] || Film
+                      const mediaType = collectionTypeToMediaType[lib.collectionType]
+                      const isActive = activeCategory === mediaType
+                      return (
+                        <Button
+                          key={lib.id}
+                          variant="ghost"
+                          className={cn(
+                            "w-full justify-start gap-3 px-3 py-1.5 h-8 font-normal text-xs",
+                            isActive && "bg-accent font-medium"
+                          )}
+                          onClick={() => {
+                            setCurrentMedia(null)
+                            setSearchQuery('')
+                            setIsSearching(false)
+                            setActiveCategory(mediaType)
+                          }}
+                        >
+                          <IconComp className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="truncate">{lib.name}</span>
+                        </Button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -251,7 +342,7 @@ export function Sidebar() {
 
           {/* Footer */}
           <div className="px-6 py-4 text-xs text-muted-foreground">
-            <p>© 2024 MyTube</p>
+            <p>&copy; 2024 MyTube</p>
             <p className="mt-1">A personal media streaming platform</p>
           </div>
         </div>

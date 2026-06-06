@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback, useMemo } from 'react'
+import { useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAppStore, MediaType } from '@/store/useAppStore'
 import { Header } from '@/components/Header'
 import { Sidebar } from '@/components/Sidebar'
@@ -13,7 +13,7 @@ import { SettingsDialog } from '@/components/SettingsDialog'
 import { JellyfinBrowser } from '@/components/JellyfinBrowser'
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
-import { History, TrendingUp, Bookmark, SlidersHorizontal } from 'lucide-react'
+import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones } from 'lucide-react'
 
 function isAudioType(type: string): boolean {
   return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
@@ -46,6 +46,9 @@ export default function Home() {
     isInWatchLater,
   } = useWatchHistory()
 
+  // Track whether we've loaded Jellyfin items for the home page
+  const jellyfinHomeLoadedRef = useRef(false)
+
   // Check if the current media is audio type (for the persistent bar)
   const isAudioPlaying = currentMedia ? isAudioType(currentMedia.type) : false
 
@@ -54,6 +57,10 @@ export default function Home() {
     try {
       const params = new URLSearchParams()
       if (activeCategory !== 'ALL') params.set('type', activeCategory)
+      // Include Jellyfin items when connected
+      if (jellyfinConnected) {
+        params.set('includeJellyfin', 'true')
+      }
       const res = await fetch(`/api/media?${params}`)
       const data = await res.json()
       setMediaItems(data.media || [])
@@ -62,7 +69,7 @@ export default function Home() {
     } finally {
       setIsLoading(false)
     }
-  }, [activeCategory, setMediaItems, setIsLoading])
+  }, [activeCategory, jellyfinConnected, setMediaItems, setIsLoading])
 
   useEffect(() => {
     fetchMedia()
@@ -98,6 +105,11 @@ export default function Home() {
   }, [searchQuery, setSearchResults, setIsSearching])
 
   const handlePlay = useCallback((item: any) => {
+    // If item has children (series, album, etc.), don't play directly
+    // MediaCard handles navigation for these items
+    if (item.isJellyfin && item.hasChildren) {
+      return
+    }
     setCurrentMedia(item)
     addToHistory(item)
   }, [setCurrentMedia, addToHistory])
@@ -114,13 +126,11 @@ export default function Home() {
     return isInWatchLater(id)
   }, [isInWatchLater])
 
-  // Build sections for the home page when viewing ALL category
+  // Build sections for the home page
   const sections = useMemo<MediaSection[]>(() => {
-    if (activeCategory !== 'ALL') return []
-
     const result: MediaSection[] = []
 
-    // Continue Watching section — from watch history
+    // Continue Watching section
     if (watchHistory.length > 0) {
       result.push({
         id: 'continue-watching',
@@ -142,6 +152,10 @@ export default function Home() {
           jellyfinId: h.jellyfinId,
           itemType: h.itemType,
           communityRating: h.communityRating,
+          hasChildren: h.hasChildren,
+          childCount: h.childCount,
+          mediaSourceId: h.mediaSourceId,
+          collectionType: h.collectionType,
         })),
         icon: <History className="h-5 w-5 text-emerald-500" />,
       })
@@ -150,7 +164,6 @@ export default function Home() {
     // Popular section — sorted by views/community rating
     if (mediaItems.length > 0) {
       const popularItems = [...mediaItems].sort((a, b) => {
-        // Prefer community rating for Jellyfin items, views for local items
         const scoreA = a.communityRating ? a.communityRating * 100 : a.views || 0
         const scoreB = b.communityRating ? b.communityRating * 100 : b.views || 0
         return scoreB - scoreA
@@ -188,15 +201,72 @@ export default function Home() {
           jellyfinId: w.jellyfinId,
           itemType: w.itemType,
           communityRating: w.communityRating,
+          hasChildren: w.hasChildren,
+          childCount: w.childCount,
+          mediaSourceId: w.mediaSourceId,
+          collectionType: w.collectionType,
         })),
         icon: <Bookmark className="h-5 w-5 text-amber-500" />,
       })
     }
 
-    // By Genre sections
-    if (mediaItems.length > 0) {
+    // Group Jellyfin items by type for Home page
+    const jellyfinMovies = mediaItems.filter(i => i.isJellyfin && i.type === 'MOVIE')
+    const jellyfinTVShows = mediaItems.filter(i => i.isJellyfin && i.type === 'TV_SHOW')
+    const jellyfinMusic = mediaItems.filter(i => i.isJellyfin && i.type === 'MUSIC')
+    const jellyfinPodcasts = mediaItems.filter(i => i.isJellyfin && i.type === 'PODCAST')
+    const jellyfinAudiobooks = mediaItems.filter(i => i.isJellyfin && i.type === 'AUDIOBOOK')
+
+    if (jellyfinMovies.length > 0) {
+      result.push({
+        id: 'jellyfin-movies',
+        title: 'Movies on NAS',
+        items: jellyfinMovies,
+        icon: <Film className="h-5 w-5 text-red-500" />,
+      })
+    }
+
+    if (jellyfinTVShows.length > 0) {
+      result.push({
+        id: 'jellyfin-tvshows',
+        title: 'TV Shows on NAS',
+        items: jellyfinTVShows,
+        icon: <Tv className="h-5 w-5 text-emerald-500" />,
+      })
+    }
+
+    if (jellyfinMusic.length > 0) {
+      result.push({
+        id: 'jellyfin-music',
+        title: 'Music on NAS',
+        items: jellyfinMusic,
+        icon: <Music className="h-5 w-5 text-purple-500" />,
+      })
+    }
+
+    if (jellyfinPodcasts.length > 0) {
+      result.push({
+        id: 'jellyfin-podcasts',
+        title: 'Podcasts on NAS',
+        items: jellyfinPodcasts,
+        icon: <Mic className="h-5 w-5 text-amber-500" />,
+      })
+    }
+
+    if (jellyfinAudiobooks.length > 0) {
+      result.push({
+        id: 'jellyfin-audiobooks',
+        title: 'Audiobooks on NAS',
+        items: jellyfinAudiobooks,
+        icon: <Headphones className="h-5 w-5 text-teal-500" />,
+      })
+    }
+
+    // By Genre sections (local items only)
+    const localItems = mediaItems.filter(i => !i.isJellyfin)
+    if (localItems.length > 0) {
       const genreGroups: Record<string, any[]> = {}
-      mediaItems.forEach((item) => {
+      localItems.forEach((item) => {
         const genre = item.genre || 'Other'
         if (!genreGroups[genre]) genreGroups[genre] = []
         genreGroups[genre].push(item)
