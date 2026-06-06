@@ -660,7 +660,7 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
               <Tv className="h-4 w-4 text-mythic" />
               <h3 className="text-sm font-semibold">Episodes</h3>
               <Select
-                value={selectedSeasonId || undefined}
+                value={selectedSeasonId || ''}
                 onValueChange={(val) => handleSeasonChange(val)}
               >
                 <SelectTrigger className="w-auto min-w-[140px] h-8 text-xs bg-white/5 border-white/10">
@@ -696,9 +696,9 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
           {/* Episode list */}
           {!jellyfinLoading && jellyfinDetails?.episodes && jellyfinDetails.episodes.length > 0 && (
             <div className="space-y-1 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
-              {jellyfinDetails.episodes.map((episode) => (
+              {jellyfinDetails.episodes.map((episode, index) => (
                 <EpisodeCard
-                  key={`ep-${episode.id}`}
+                  key={`ep-${episode.id}-${index}`}
                   episode={episode}
                   onPlay={handlePlayEpisode}
                 />
@@ -758,9 +758,9 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
             </Badge>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
-            {jellyfinDetails.children?.map((child: any) => (
+            {jellyfinDetails.children?.map((child: any, index: number) => (
               <CollectionMovieCard
-                key={child.Id}
+                key={`child-${child.Id}-${index}`}
                 child={child}
                 onClick={() => handleCollectionMovieClick(child)}
               />

@@ -125,3 +125,26 @@ Stage Summary:
 - Dark theme with Netflix-style UI is the default
 - Hero banner rotates through featured content
 - Zero lint errors, zero runtime errors
+
+---
+Task ID: 10
+Agent: Main Agent
+Task: Fix duplicate key error in MediaGrid.tsx and other remaining bugs
+
+Work Log:
+- Fixed duplicate key error in MediaGrid.tsx: Changed all `key={item.id}` to `key={`${item.id}-${idx}`}` across 4 locations (expanded grid, horizontal shelf, genre groups, fallback grid) to ensure unique keys when same Jellyfin item appears in multiple categories
+- Fixed no sound in video player: Modified `/api/jellyfin/stream/[itemId]/route.ts` to check browser compatibility of container/codecs before using `Static=true`. Now checks container (mp4, webm, mov), video codec (h264, hevc, vp8, vp9, av1), and audio codec (aac, mp3, opus, vorbis, flac). If not browser-compatible, uses Jellyfin's TranscodingUrl which ensures audio works (e.g., remuxing MKV+DTS to MP4+AAC)
+- Fixed empty podcast library: Added broader name patterns for podcast detection (podcast, talk, radio, show). Added fallback search: when no dedicated podcast library is found, searches ALL libraries for items with "podcast" in genres or name. Also added matching exclude patterns for Music category to prevent podcast items from appearing in Music.
+- Fixed duplicate keys in MediaDetail.tsx: Changed collection children from `key={child.Id}` to `key={`child-${child.Id}-${index}`}`, episodes from `key={`ep-${episode.id}`}` to `key={`ep-${episode.id}-${index}`}`
+- Fixed deduplication in media API route: Added Set-based deduplication of items by `id` when merging Jellyfin and local items in `/api/media/route.ts`
+- Made jellyfin items route consistent: Changed `id: item.Id` to `id: \`jf-${item.Id}\`` in `/api/jellyfin/items/route.ts` for consistency with category route
+- Fixed Select component warning: Changed `value={selectedSeasonId || undefined}` to `value={selectedSeasonId || ''}` in MediaDetail.tsx to prevent controlled/uncontrolled warning
+- Verified with agent browser: No console errors, all categories render, podcasts show content, video player works for both local and Jellyfin movies
+
+Stage Summary:
+- Duplicate key error `jf-07355a4c555138eced15536e648d8095` is resolved
+- Video player now intelligently chooses between direct play (Static=true) and transcoding based on browser codec compatibility - fixes no-sound issue
+- Podcasts library shows content (6 Minute English, The Art of Rave, etc.)
+- All items are deduplicated across categories
+- Select component no longer shows controlled/uncontrolled warning
+- All lint checks pass with zero errors

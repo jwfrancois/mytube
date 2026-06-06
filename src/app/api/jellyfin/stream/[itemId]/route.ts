@@ -72,15 +72,38 @@ export async function GET(
           const mediaSource = playbackData.MediaSources?.[0]
 
           if (mediaSource) {
-            if (mediaSource.SupportsDirectPlay || mediaSource.SupportsDirectStream) {
-              // Direct play/stream is supported — use Static=true to avoid transcoding
+            // Check if the direct stream is browser-compatible
+            // Browser-safe containers: mp4, m4v, webm, mov
+            // Browser-safe video codecs: h264, hevc/h265, vp8, vp9, av1
+            // Browser-safe audio codecs: aac, mp3, opus, vorbis, flac
+            const container = (mediaSource.Container || '').toLowerCase()
+            const videoStream = (mediaSource.MediaStreams || []).find((s: any) => s.Type === 'Video')
+            const audioStream = (mediaSource.MediaStreams || []).find((s: any) => s.Type === 'Audio')
+
+            const browserSafeContainers = ['mp4', 'm4v', 'webm', 'mov']
+            const browserSafeVideoCodecs = ['h264', 'h265', 'hevc', 'vp8', 'vp9', 'av1']
+            const browserSafeAudioCodecs = ['aac', 'mp3', 'opus', 'vorbis', 'flac']
+
+            const containerIsSafe = browserSafeContainers.includes(container)
+            const videoIsSafe = !videoStream || browserSafeVideoCodecs.includes((videoStream.Codec || '').toLowerCase())
+            const audioIsSafe = !audioStream || browserSafeAudioCodecs.includes((audioStream.Codec || '').toLowerCase())
+            const isDirectPlaySafe = containerIsSafe && videoIsSafe && audioIsSafe
+
+            if ((mediaSource.SupportsDirectPlay || mediaSource.SupportsDirectStream) && isDirectPlaySafe) {
+              // Direct play/stream is supported AND codecs are browser-compatible
+              // Use Static=true to avoid transcoding entirely
               streamUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
             } else if (mediaSource.TranscodingUrl) {
-              // Transcoding needed — use Jellyfin's recommended transcoding URL
+              // Transcoding/remuxing needed — use Jellyfin's recommended transcoding URL
+              // This ensures browser-compatible output (e.g., remuxing MKV with DTS to MP4 with AAC)
               const transcodeUrl = mediaSource.TranscodingUrl
               streamUrl = transcodeUrl.startsWith('http')
                 ? transcodeUrl
                 : `${server.serverUrl}${transcodeUrl}`
+            } else if (mediaSource.SupportsDirectPlay || mediaSource.SupportsDirectStream) {
+              // Direct play supported but codecs may not be browser-safe
+              // Try Static=true anyway as a last resort (some browsers can handle more codecs)
+              streamUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
             } else {
               // No stream info — fallback to static direct stream
               streamUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`

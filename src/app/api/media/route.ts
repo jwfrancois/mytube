@@ -70,7 +70,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Merge: Jellyfin items first, then local items
-    const allMedia = [...jellyfinItems, ...media]
+    // Deduplicate by id (Jellyfin items prefixed with 'jf-')
+    const seenIds = new Set<string>()
+    const allMedia = [...jellyfinItems, ...media].filter((item) => {
+      if (seenIds.has(item.id)) return false
+      seenIds.add(item.id)
+      return true
+    })
 
     return NextResponse.json({
       media: allMedia,

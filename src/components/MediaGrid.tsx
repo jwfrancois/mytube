@@ -88,9 +88,9 @@ function HorizontalShelf({
       {expanded ? (
         // Expanded grid view
         <div className="px-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {section.items.map((item) => (
+          {section.items.map((item, idx) => (
             <MediaCard
-              key={item.id}
+              key={`${item.id}-${idx}`}
               item={item}
               onWatchLater={onWatchLater}
               onRemoveWatchLater={onRemoveWatchLater}
@@ -121,8 +121,8 @@ function HorizontalShelf({
             onScroll={checkScroll}
             onLoad={checkScroll}
           >
-            {section.items.map((item) => (
-              <div key={item.id} className="shrink-0 w-[200px] sm:w-[220px] lg:w-[240px] row-item">
+            {section.items.map((item, idx) => (
+              <div key={`${item.id}-${idx}`} className="shrink-0 w-[200px] sm:w-[220px] lg:w-[240px] row-item">
                 <MediaCard
                   item={item}
                   onWatchLater={onWatchLater}
@@ -315,9 +315,9 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
           <section key={genre} className="mb-8">
             <h2 className="text-lg font-semibold mb-3">{genre}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {genreItems.map((item) => (
+              {genreItems.map((item, idx) => (
                 <MediaCard
-                  key={item.id}
+                  key={`${item.id}-${idx}`}
                   item={item}
                   onWatchLater={onWatchLater}
                   onRemoveWatchLater={onRemoveWatchLater}
@@ -347,9 +347,9 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {items.map((item) => (
+              {items.map((item, idx) => (
                 <MediaCard
-                  key={item.id}
+                  key={`${item.id}-${idx}`}
                   item={item}
                   onWatchLater={onWatchLater}
                   onRemoveWatchLater={onRemoveWatchLater}

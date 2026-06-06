@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
       const hasChildren = item.Type === 'Series' || item.Type === 'Season' || item.Type === 'MusicAlbum' || item.Type === 'MusicArtist' || item.IsFolder || (item.ChildCount && item.ChildCount > 0)
 
       return {
-        id: item.Id,
+        id: `jf-${item.Id}`,
         title: item.Name || 'Untitled',
         description: item.Overview || '',
         type,

@@ -22,14 +22,14 @@ const TYPE_TO_COLLECTION_TYPE: Record<string, string[]> = {
 // Library name patterns to match for each type (case-insensitive)
 // When a collectionType matches multiple types, use name patterns to disambiguate
 const TYPE_TO_NAME_PATTERNS: Record<string, RegExp[]> = {
-  PODCAST: [/podcast/i],
+  PODCAST: [/podcast/i, /talk/i, /radio/i, /show/i],
   MUSIC: [], // No name filter — matches any library with 'music' collectionType not matched by other patterns
   COLLECTION: [/collection/i],
 }
 
 // Name patterns to EXCLUDE for a type (libraries that match collectionType but should be excluded)
 const TYPE_TO_EXCLUDE_NAME_PATTERNS: Record<string, RegExp[]> = {
-  MUSIC: [/podcast/i], // Exclude podcast libraries from Music category
+  MUSIC: [/podcast/i, /talk/i, /radio/i], // Exclude podcast-like libraries from Music category
 }
 
 const TYPE_TO_ITEM_TYPES: Record<string, string> = {
@@ -112,6 +112,41 @@ export async function GET(request: NextRequest) {
 
       return false
     })
+
+    if (matchingLibraries.length === 0 && type === 'PODCAST') {
+      // Fallback: No dedicated podcast library found.
+      // Search ALL libraries for podcast-like content (items with "podcast" in genres or name)
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 15000)
+        const commonFields = 'PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount'
+
+        // Search across all items for podcast-like content
+        const url = `${server.serverUrl}/Items?UserId=${server.userId}&IncludeItemTypes=Series,MusicAlbum,Audio&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+        const res = await fetch(url, {
+          headers: { 'X-Emby-Token': server.accessToken },
+          signal: controller.signal,
+        })
+        clearTimeout(timeoutId)
+
+        if (res.ok) {
+          const data = await res.json()
+          // Filter items that look like podcasts (by genre or name)
+          const podcastItems = (data.Items || []).filter((item: any) => {
+            const genres = (item.Genres || []).join(' ').toLowerCase()
+            const name = (item.Name || '').toLowerCase()
+            return genres.includes('podcast') || name.includes('podcast')
+          })
+
+          const items = podcastItems.map((item: any) =>
+            mapJellyfinItem(item, type, 'podcasts', 'Podcasts')
+          )
+          return NextResponse.json({ items, totalRecordCount: items.length })
+        }
+      } catch (err) {
+        console.error('Podcast fallback search error:', err)
+      }
+    }
 
     if (matchingLibraries.length === 0) {
       return NextResponse.json({ items: [], totalRecordCount: 0 })
