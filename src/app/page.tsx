@@ -28,6 +28,15 @@ function isAudioType(type: string): boolean {
   return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
 }
 
+const categoryTitle: Record<string, string> = {
+  MOVIE: 'Movies',
+  TV_SHOW: 'TV Shows',
+  MUSIC: 'Music',
+  PODCAST: 'Podcasts',
+  AUDIOBOOK: 'Audiobooks',
+  COLLECTION: 'Collections',
+}
+
 export default function Home() {
   const {
     sidebarOpen,
@@ -449,11 +458,42 @@ export default function Home() {
       )
     }
 
-    // For other categories, use standard grid
+    // For other categories, build category-specific sections grouped by genre
+    const categoryFilteredItems = mediaItems.filter(i => i.type === activeCategory)
+
+    const categorySections: MediaSection[] = []
+    if (categoryFilteredItems.length > 0) {
+      // Group by genre within the category
+      const genreGroups: Record<string, any[]> = {}
+      categoryFilteredItems.forEach((item) => {
+        const genre = item.genre || 'Other'
+        if (!genreGroups[genre]) genreGroups[genre] = []
+        genreGroups[genre].push(item)
+      })
+
+      Object.entries(genreGroups).forEach(([genre, genreItems]) => {
+        categorySections.push({
+          id: `category-${activeCategory}-${genre.toLowerCase().replace(/\s+/g, '-')}`,
+          title: genre,
+          items: genreItems,
+        })
+      })
+
+      // If no genre groups, add a single section with all items
+      if (categorySections.length === 0) {
+        categorySections.push({
+          id: `category-${activeCategory}`,
+          title: categoryTitle[activeCategory] || activeCategory,
+          items: categoryFilteredItems,
+        })
+      }
+    }
+
     return (
       <MediaGrid
         items={mediaItems}
         onRefresh={fetchMedia}
+        sections={categorySections.length > 0 ? categorySections : undefined}
         onWatchLater={handleWatchLater}
         onRemoveWatchLater={handleRemoveWatchLater}
         isInWatchLater={handleIsInWatchLater}

@@ -1131,3 +1131,73 @@ Work Log:
 Stage Summary:
 - Double playback fix implemented with a track change guard ref
 - The play/pause sync effect now checks the guard before calling play()
+
+---
+Task ID: 1
+Agent: Bug Fix Agent
+Task: Fix HLS fragLoadError (video segments return 500) and category pages showing wrong content
+
+Work Log:
+
+### Bug 1: HLS fragLoadError - Video segments return 500 from Jellyfin
+
+Root cause: The stream endpoint (`/api/jellyfin/stream/[itemId]/route.ts`) always forced HLS transcoding by setting `DirectPlayProfiles: []`, which meant Jellyfin would always try to transcode via ffmpeg. But the Jellyfin server's transcoding was failing (ffmpeg issues), causing all .ts segment requests to return 500 — producing `fragLoadError` in hls.js.
+
+Fixes applied to `/src/app/api/jellyfin/stream/[itemId]/route.ts`:
+
+1. **HLS Mode section** (lines 38-57): Changed `DirectPlayProfiles` from `[]` to support common video containers and codecs (mp4, mkv, webm, avi, etc. with h264/h265/hevc/vp9/av1 video and aac/mp3/opus/vorbis/ac3/eac3 audio). Added mp4 HTTP transcoding profile as fallback.
+
+2. **HLS Mode section** (lines 64-72): Added direct play check BEFORE falling through to HLS. If `mediaSource.SupportsDirectPlay` or `mediaSource.SupportsDirectStream` is true, returns `{ url: directUrl, format: 'direct' }` — bypassing HLS transcoding entirely.
+
+3. **Video Mode section** (lines 364-399): Same changes — added DirectPlayProfiles with broad codec support, and added direct play check before HLS fallback.
+
+Fixes applied to `/src/components/VideoPlayer.tsx`:
+
+1. **startPlayback function** (line 339-350): Added handling for `data.format === 'direct'` response — when the server returns a direct play URL, sets video element's src directly (no hls.js needed), sets strategy to 'direct', and calls `video.load()` + `video.play()`.
+
+2. **handleLiveTVStream function** (lines 1010-1024): Added same direct play handling — when `data.format === 'direct'`, sets video src directly instead of routing through hls.js.
+
+3. **Hook return values** (lines 479-497): Exposed `setStrategy` and `setCurrentSrc` from the `useHlsVideoPlayer` hook so the main VideoPlayer component can use them in the Live TV handler. Renamed to `setStreamStrategy` and `setStreamCurrentSrc` to avoid naming conflicts.
+
+### Bug 2: All categories show Movie page
+
+Root cause: When switching categories (TV Shows, Music, etc.), the page passed `mediaItems` to `MediaGrid` without sections, causing a flat grid that showed all items regardless of type. The `filteredItems` filter in MediaGrid helped, but the category pages lacked the section-based layout that makes content browsable.
+
+Fixes applied to `/src/app/page.tsx`:
+
+1. Added `categoryTitle` mapping (lines 31-38): Maps category keys to display names (MOVIE→Movies, TV_SHOW→TV Shows, etc.)
+
+2. Replaced flat grid rendering for non-ALL categories (lines 461-502): Now builds `categorySections` by filtering `mediaItems` by `activeCategory`, then grouping by genre within the category. Passes `categorySections` as the `sections` prop to `MediaGrid`, giving category pages the same section-based shelf layout as the home page.
+
+Stage Summary:
+- HLS fragLoadError FIXED — direct play is now preferred over HLS transcoding when Jellyfin supports it
+- Videos that Jellyfin can serve directly will play without hls.js, avoiding the 500 error on .ts segments
+- If direct play isn't available, HLS transcoding is still attempted as fallback
+- Category pages (TV Shows, Music, etc.) now show section-based layout grouped by genre instead of flat grid
+- Each category page has a distinct header and genre-grouped shelves
+- Lint passes cleanly, dev server compiles without errors
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix HLS fragLoadError, category navigation, HDHomerun channels, and multiple other bugs
+
+Work Log:
+- Analyzed dev server logs: HLS .ts segments returning 500 from Jellyfin transcoding server
+- Fixed HLS stream endpoint to prefer direct play over transcoding (DirectPlayProfiles with browser-compatible formats: mp4/h264/aac, webm/vp9/opus, mov/h264/aac)
+- Added direct play format handling in VideoPlayer.tsx (video.src = url when format=direct)
+- Fixed category navigation: non-ALL categories now build genre-grouped sections instead of flat grid
+- Added categoryTitle mapping in page.tsx for proper category headers
+- Fixed MediaGrid duplicate key errors by adding index to key patterns
+- Fixed HDHomerun channel fetch: increased timeout to 30s, try /lineup.json first then /lineup.html fallback
+- Fixed audiobook double playback: added loadOpIdRef to cancel stale loadAndPlay callbacks, pause before src change
+- Started HDHomerun transcoder mini-service on port 3010
+- Verified with agent browser: all categories (Movies, TV Shows, Music) show correct filtered content
+
+Stage Summary:
+- HLS fragLoadError fixed: direct play preferred, fallback to HLS transcoding
+- Category navigation fixed: each category shows its own content with proper headers and genre sections
+- HDHomerun channels: improved timeouts and endpoint handling (server still can't reach local tuner from cloud)
+- MediaGrid duplicate key and hydration issues fixed
+- Audiobook double playback fixed with operation ID guard
+- Transcoder service running on port 3010

@@ -40,9 +40,15 @@ export async function GET(
               MaxStreamingBitrate: 20000000,
               MaxStaticBitrate: 20000000,
               MusicStreamingTranscodingBitrate: 320000,
-              DirectPlayProfiles: [],
+              DirectPlayProfiles: [
+                // Only containers/codecs that browsers can actually play natively
+                { Container: 'mp4,m4v', VideoCodec: 'h264', AudioCodec: 'aac,mp3,ac3,eac3', Type: 'Video' },
+                { Container: 'webm', VideoCodec: 'vp9,vp8,av1', AudioCodec: 'opus,vorbis', Type: 'Video' },
+                { Container: 'mov', VideoCodec: 'h264', AudioCodec: 'aac,mp3', Type: 'Video' },
+              ],
               TranscodingProfiles: [
                 { Container: 'ts', AudioCodec: 'aac', VideoCodec: 'h264', Type: 'Video', Context: 'Streaming', Protocol: 'hls', MaxAudioChannels: '2', BreakOnNonKeyFrames: true },
+                { Container: 'mp4', AudioCodec: 'aac', VideoCodec: 'h264', Type: 'Video', Context: 'Streaming', Protocol: 'http', MaxAudioChannels: '2' },
                 { Container: 'mp3', AudioCodec: 'mp3', Type: 'Audio', Context: 'Streaming', Protocol: 'http' },
               ],
               CodecProfiles: [],
@@ -57,6 +63,16 @@ export async function GET(
         if (playbackRes.ok) {
           const playbackData = await playbackRes.json()
           const mediaSource = playbackData.MediaSources?.[0]
+
+          // Prefer direct play if available — avoids HLS transcoding issues (fragLoadError)
+          if (mediaSource?.SupportsDirectPlay || mediaSource?.SupportsDirectStream) {
+            const directUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
+            return NextResponse.json({
+              url: directUrl,
+              format: 'direct',
+              mediaSourceId: mediaSource.Id || mediaSourceId,
+            })
+          }
 
           if (mediaSource?.TranscodingUrl) {
             const hlsUrl = mediaSource.TranscodingUrl.startsWith('http')
@@ -348,10 +364,16 @@ export async function GET(
             MaxStreamingBitrate: 20000000,
             MaxStaticBitrate: 20000000,
             MusicStreamingTranscodingBitrate: 320000,
-            // Request HLS transcoding — this ensures we always get a .m3u8 URL
-            DirectPlayProfiles: [],
+            // Prefer direct play — avoids HLS transcoding issues (fragLoadError)
+            // Only containers/codecs that browsers can actually play natively
+            DirectPlayProfiles: [
+              { Container: 'mp4,m4v', VideoCodec: 'h264', AudioCodec: 'aac,mp3,ac3,eac3', Type: 'Video' },
+              { Container: 'webm', VideoCodec: 'vp9,vp8,av1', AudioCodec: 'opus,vorbis', Type: 'Video' },
+              { Container: 'mov', VideoCodec: 'h264', AudioCodec: 'aac,mp3', Type: 'Video' },
+            ],
             TranscodingProfiles: [
               { Container: 'ts', AudioCodec: 'aac', VideoCodec: 'h264', Type: 'Video', Context: 'Streaming', Protocol: 'hls', MaxAudioChannels: '2', BreakOnNonKeyFrames: true },
+              { Container: 'mp4', AudioCodec: 'aac', VideoCodec: 'h264', Type: 'Video', Context: 'Streaming', Protocol: 'http', MaxAudioChannels: '2' },
               { Container: 'mp3', AudioCodec: 'mp3', Type: 'Audio', Context: 'Streaming', Protocol: 'http' },
             ],
             CodecProfiles: [],
@@ -371,6 +393,16 @@ export async function GET(
       if (playbackRes.ok) {
         const playbackData = await playbackRes.json()
         const mediaSource = playbackData.MediaSources?.[0]
+
+        // Prefer direct play if available — avoids HLS transcoding issues (fragLoadError)
+        if (mediaSource?.SupportsDirectPlay || mediaSource?.SupportsDirectStream) {
+          const directUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
+          return NextResponse.json({
+            url: directUrl,
+            format: 'direct',
+            mediaSourceId: mediaSource.Id || mediaSourceId,
+          })
+        }
 
         if (mediaSource?.TranscodingUrl) {
           const hlsUrl = mediaSource.TranscodingUrl.startsWith('http')

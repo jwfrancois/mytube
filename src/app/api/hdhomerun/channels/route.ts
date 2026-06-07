@@ -43,33 +43,65 @@ export async function GET(request: NextRequest) {
     try {
       let lineupRes: Response | null = null
 
-      // Try /lineup.html first (the HDHomerun serves JSON on this endpoint too
-      // when Accept: application/json is sent)
+      // Try /lineup.json first (reliable JSON endpoint)
+      // Then /lineup.html as fallback (user-specified endpoint)
+      // HDHomerun may take 20-30s to scan channels, so use generous timeouts
+      const fetchTimeout = 30000 // 30 seconds — HDHomerun scanning can be slow
+
       try {
-        const htmlUrl = `http://${tuner.tunerIp}/lineup.html`
-        lineupRes = await fetch(htmlUrl, {
-          signal: AbortSignal.timeout(15000),
+        const jsonUrl = `http://${tuner.tunerIp}/lineup.json`
+        lineupRes = await fetch(jsonUrl, {
+          signal: AbortSignal.timeout(fetchTimeout),
           headers: {
             'User-Agent': 'MyTube/1.0',
             'Accept': 'application/json',
           },
         })
-        // If /lineup.html didn't return JSON, try /lineup.json
-        const ct = lineupRes.headers.get('content-type') || ''
-        if (!lineupRes.ok || !ct.includes('json')) {
+        // If /lineup.json didn't return a valid response, try /lineup.html
+        if (!lineupRes.ok) {
           lineupRes = null
         }
       } catch {
         lineupRes = null
       }
 
-      // Fallback to /lineup.json
+      // Fallback to /lineup.html (user-specified endpoint)
       if (!lineupRes) {
-        const jsonUrl = `http://${tuner.tunerIp}/lineup.json`
-        lineupRes = await fetch(jsonUrl, {
-          signal: AbortSignal.timeout(15000),
-          headers: { 'User-Agent': 'MyTube/1.0' },
-        })
+        try {
+          const htmlUrl = `http://${tuner.tunerIp}/lineup.html`
+          lineupRes = await fetch(htmlUrl, {
+            signal: AbortSignal.timeout(fetchTimeout),
+            headers: {
+              'User-Agent': 'MyTube/1.0',
+              'Accept': 'application/json',
+            },
+          })
+          // /lineup.html may return HTML or JSON depending on the Accept header
+          const ct = lineupRes.headers.get('content-type') || ''
+          if (!lineupRes.ok) {
+            lineupRes = null
+          } else if (!ct.includes('json') && !ct.includes('text/plain')) {
+            // If it returned HTML, try to parse it anyway (some HDHomerun models
+            // return JSON even with text/html content-type)
+            try {
+              const text = await lineupRes.text()
+              const parsed = JSON.parse(text)
+              if (Array.isArray(parsed)) {
+                // It's valid JSON — create a new response with the parsed data
+                lineupRes = new Response(JSON.stringify(parsed), {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json' },
+                })
+              } else {
+                lineupRes = null
+              }
+            } catch {
+              lineupRes = null
+            }
+          }
+        } catch {
+          lineupRes = null
+        }
       }
 
       const res = lineupRes

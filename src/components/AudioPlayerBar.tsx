@@ -185,6 +185,9 @@ export function AudioPlayerBar() {
     }
   }, [audioElementState, setAudioElement])
 
+  // Monotonically increasing operation ID to cancel stale loadAndPlay callbacks
+  const loadOpIdRef = useRef(0)
+
   // Load and play a track on the audio element — used for both initial load and track transitions
   const loadAndPlay = useCallback((track: MediaItem, shouldPlay: boolean) => {
     const el = audioRef.current
@@ -193,11 +196,20 @@ export function AudioPlayerBar() {
     const src = getAudioSrc(track)
     const trackId = getTrackId(track)
 
+    // Increment operation ID to invalidate any previous pending play attempts
+    const opId = ++loadOpIdRef.current
+
     // Only update source if the track has actually changed
     if (currentSrcIdRef.current !== trackId) {
       currentSrcIdRef.current = trackId
       setAudioError(null)
       setRetryCount(0)
+
+      // Pause any current playback before switching source to prevent double-play
+      if (!el.paused) {
+        el.pause()
+      }
+
       el.src = src
       el.volume = useAppStore.getState().volume
       el.playbackRate = useAppStore.getState().playbackSpeed
@@ -207,6 +219,8 @@ export function AudioPlayerBar() {
         let played = false
         const tryPlay = () => {
           if (played) return
+          // Check if this operation is still current (not superseded by a newer loadAndPlay)
+          if (loadOpIdRef.current !== opId) return
           played = true
           el.play().catch(() => {})
           el.removeEventListener('canplaythrough', tryPlay)
@@ -220,7 +234,7 @@ export function AudioPlayerBar() {
 
         // Safety timeout: try to play after 3 seconds even if no event fires
         setTimeout(() => {
-          if (!played) {
+          if (!played && loadOpIdRef.current === opId) {
             played = true
             el.play().catch(() => {})
             el.removeEventListener('canplaythrough', tryPlay)
@@ -232,8 +246,10 @@ export function AudioPlayerBar() {
         el.load()
       }
     } else if (shouldPlay) {
-      // Same track — just play/pause
-      el.play().catch(() => {})
+      // Same track — just play (but only if this operation is still current)
+      if (loadOpIdRef.current === opId && el.paused) {
+        el.play().catch(() => {})
+      }
     }
   }, [getAudioSrc, getTrackId])
 

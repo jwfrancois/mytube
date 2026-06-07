@@ -336,7 +336,18 @@ function useHlsVideoPlayer(
         }
       }
 
-      if (data.format === 'hls' && data.url) {
+      if (data.format === 'direct' && data.url) {
+        // Direct play — set video src directly (no hls.js needed)
+        const video = videoRef.current
+        if (video) {
+          video.src = data.url
+          setCurrentSrc(data.url)
+          setStrategy('direct')
+          video.load()
+          video.play().catch(() => {})
+        }
+        return
+      } else if (data.format === 'hls' && data.url) {
         await playHlsStream(data.url, false)
       } else if (data.url) {
         await playHlsStream(data.url, false)
@@ -471,7 +482,9 @@ function useHlsVideoPlayer(
     videoLoading,
     setVideoLoading,
     strategy,
+    setStrategy,
     currentSrc,
+    setCurrentSrc,
     handleVideoError,
     handleCanPlay,
     handleWaiting,
@@ -929,6 +942,9 @@ export function VideoPlayer() {
     videoLoading,
     setVideoLoading,
     strategy,
+    setStrategy: setStreamStrategy,
+    currentSrc,
+    setCurrentSrc: setStreamCurrentSrc,
     handleVideoError,
     handleCanPlay,
     handleWaiting,
@@ -996,7 +1012,17 @@ export function VideoPlayer() {
       if (contentType.includes('application/json')) {
         // HDHomerun or Jellyfin Live TV: returns JSON with the HLS URL
         const data = await res.json()
-        if (data.format === 'hls' && data.url) {
+        if (data.format === 'direct' && data.url) {
+          // Direct play — set video src directly (no hls.js needed)
+          const video = videoRef.current
+          if (video) {
+            video.src = data.url
+            setStreamCurrentSrc(data.url)
+            setStreamStrategy('direct')
+            video.load()
+            video.play().catch(() => {})
+          }
+        } else if (data.format === 'hls' && data.url) {
           playDirectM3U8(data.url)
         } else if (data.url) {
           playDirectM3U8(data.url)
@@ -1016,7 +1042,7 @@ export function VideoPlayer() {
       setVideoError('Failed to load Live TV stream. Check your network connection.')
       setVideoLoading(false)
     }
-  }, [playDirectM3U8, setVideoError, setVideoLoading, hdhrTunerIp])
+  }, [playDirectM3U8, setVideoError, setVideoLoading, hdhrTunerIp, setStreamCurrentSrc, setStreamStrategy])
 
   // Sync video element volume/speed with shared store state
   useEffect(() => {

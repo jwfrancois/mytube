@@ -355,9 +355,9 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
           <section key={genre} className="mb-8">
             <h2 className="text-lg font-semibold mb-3">{genre}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {genreItems.map((item) => (
+              {genreItems.map((item, idx) => (
                 <MediaCard
-                  key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}`}
+                  key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}-${idx}`}
                   item={item}
                   onWatchLater={onWatchLater}
                   onRemoveWatchLater={onRemoveWatchLater}
@@ -387,9 +387,9 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredItems.map((item) => (
+              {filteredItems.map((item, idx) => (
                 <MediaCard
-                  key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}`}
+                  key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}-${idx}`}
                   item={item}
                   onWatchLater={onWatchLater}
                   onRemoveWatchLater={onRemoveWatchLater}
