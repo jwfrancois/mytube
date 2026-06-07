@@ -174,13 +174,14 @@ function buildProxyUrl(targetUrl: string): string {
  */
 async function handleHDHomerunStream(channelNumber: string, format: string): Promise<NextResponse> {
   try {
+    // Look for any registered tuner (even if not currently connected — might be reachable from transcoder)
     const tuner = await db.hDHomerunTuner.findFirst({
-      where: { connected: true },
+      orderBy: { connected: 'desc' },
     })
 
     if (!tuner) {
       return NextResponse.json(
-        { error: 'No connected HDHomerun tuner found' },
+        { error: 'No HDHomerun tuner registered. Please add one in Settings.' },
         { status: 400 }
       )
     }
@@ -205,6 +206,7 @@ async function handleHDHomerunStream(channelNumber: string, format: string): Pro
           id: tuner.id,
           name: tuner.name,
           tunerIp: tuner.tunerIp,
+          connected: tuner.connected,
         },
       })
     }

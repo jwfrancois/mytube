@@ -899,6 +899,7 @@ export function VideoPlayer() {
     videoError,
     setVideoError,
     videoLoading,
+    setVideoLoading,
     strategy,
     handleVideoError,
     handleCanPlay,

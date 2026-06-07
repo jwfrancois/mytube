@@ -25,10 +25,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch HDHomerun channels if a tuner is connected
+    // Fetch HDHomerun channels if a tuner is registered
     if (includeHDHomerun) {
       try {
-        const tuner = await db.hDHomerunTuner.findFirst({ where: { connected: true } })
+        const tuner = await db.hDHomerunTuner.findFirst({
+          orderBy: { connected: 'desc' },
+        })
         if (tuner) {
           const hdhrChannels = await fetchHDHomerunChannels(tuner.tunerIp)
           channels = [...channels, ...hdhrChannels]

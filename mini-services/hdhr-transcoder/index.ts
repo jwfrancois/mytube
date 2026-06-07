@@ -5,30 +5,46 @@
  * using FFmpeg, making them playable in browsers via hls.js.
  *
  * Runs on port 3010.
+ *
+ * Endpoints:
+ *   GET /stream/:channelNumber/index.m3u8?tunerIp=<ip>&quality=<low|medium|high>
+ *   GET /stream/:channelNumber/segment/:segment
+ *   GET /status
  */
 
-import { readFile, rm, stat } from "node:fs/promises";
+import { spawn, type ChildProcess } from "node:child_process";
+import { readFile, readdir, rm, stat } from "node:fs/promises";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 const PORT = 3010;
-const HLS_BASE_DIR = "/tmp/hdhr-hls";
+const TEMP_DIR_PREFIX = "/tmp/hdhr-transcode-";
 const FFMPEG_PATH = "/usr/bin/ffmpeg";
-const STALE_TIMEOUT_MS = 30_000; // 30 seconds of no access → kill process
-const CLEANUP_INTERVAL_MS = 10_000; // Check every 10 seconds
-const M3U8_WAIT_TIMEOUT_MS = 15_000; // Wait up to 15s for m3u8 to appear
+const STALE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes of no access → kill process
+const CLEANUP_INTERVAL_MS = 60 * 1000; // Check every 60 seconds
+const M3U8_WAIT_TIMEOUT_MS = 10_000; // Wait up to 10s for m3u8 to appear
 const M3U8_POLL_INTERVAL_MS = 250; // Poll every 250ms
+
+// Quality presets: video bitrate
+const QUALITY_BITRATES: Record<string, number> = {
+  low: 1500,
+  medium: 3000,
+  high: 6000,
+};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface StreamEntry {
-  process: ReturnType<typeof Bun.spawn>;
-  lastAccessed: number;
+  process: ChildProcess;
+  tempDir: string;
+  lastAccess: number;
   startedAt: number;
   tunerIp: string;
   channelNumber: string;
+  quality: string;
+  failed: boolean;
 }
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -45,7 +61,11 @@ function corsHeaders(): Record<string, string> {
   };
 }
 
-function jsonResponse(data: unknown, status = 200, extraHeaders: Record<string, string> = {}): Response {
+function jsonResponse(
+  data: unknown,
+  status = 200,
+  extraHeaders: Record<string, string> = {}
+): Response {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {
@@ -56,30 +76,37 @@ function jsonResponse(data: unknown, status = 200, extraHeaders: Record<string, 
   });
 }
 
-function errorResponse(message: string, status = 500, extraHeaders: Record<string, string> = {}): Response {
+function errorResponse(
+  message: string,
+  status = 500,
+  extraHeaders: Record<string, string> = {}
+): Response {
   return jsonResponse({ error: message }, status, extraHeaders);
 }
 
-function channelDir(channelNumber: string): string {
-  return join(HLS_BASE_DIR, channelNumber);
+function channelTempDir(channelNumber: string): string {
+  return `${TEMP_DIR_PREFIX}${channelNumber}`;
 }
 
 function m3u8Path(channelNumber: string): string {
-  return join(channelDir(channelNumber), "index.m3u8");
+  return join(channelTempDir(channelNumber), "index.m3u8");
 }
 
 function segmentPath(channelNumber: string, segFile: string): string {
-  return join(channelDir(channelNumber), segFile);
+  return join(channelTempDir(channelNumber), segFile);
 }
 
 /**
  * Wait for a file to exist on disk with polling + timeout.
  */
-async function waitForFile(filePath: string, timeoutMs: number, pollMs: number): Promise<boolean> {
+async function waitForFile(
+  filePath: string,
+  timeoutMs: number,
+  pollMs: number
+): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (existsSync(filePath)) {
-      // Also wait until the file has some content (FFmpeg writes incrementally)
       try {
         const s = await stat(filePath);
         if (s.size > 0) return true;
@@ -92,90 +119,186 @@ async function waitForFile(filePath: string, timeoutMs: number, pollMs: number):
   return false;
 }
 
+/**
+ * Synchronous recursive mkdir.
+ */
+function mkdirSyncRecursive(dir: string): void {
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+}
+
+// ─── Startup Cleanup ─────────────────────────────────────────────────────────
+
+/**
+ * Clean up any stale temp directories from previous runs.
+ */
+async function cleanupStaleTempDirs(): Promise<void> {
+  try {
+    const tmpDir = "/tmp";
+    const entries = await readdir(tmpDir);
+    const staleDirs = entries.filter(
+      (e) => e.startsWith("hdhr-transcode-")
+    );
+    for (const dir of staleDirs) {
+      const fullPath = join(tmpDir, dir);
+      try {
+        await rm(fullPath, { recursive: true, force: true });
+        console.log(`[hdhr-transcoder] Cleaned up stale temp dir: ${fullPath}`);
+      } catch (err) {
+        console.error(`[hdhr-transcoder] Failed to cleanup ${fullPath}:`, err);
+      }
+    }
+    if (staleDirs.length > 0) {
+      console.log(
+        `[hdhr-transcoder] Cleaned up ${staleDirs.length} stale temp directory(ies)`
+      );
+    }
+  } catch (err) {
+    console.error("[hdhr-transcoder] Error scanning /tmp for stale dirs:", err);
+  }
+}
+
+// Run cleanup on startup
+cleanupStaleTempDirs();
+
 // ─── FFmpeg Process Management ───────────────────────────────────────────────
 
 /**
  * Start an FFmpeg process that transcodes an HDHomerun MPEG-TS stream to HLS.
  */
-function startFFmpeg(channelNumber: string, tunerIp: string): StreamEntry {
-  const outputDir = channelDir(channelNumber);
+function startFFmpeg(
+  channelNumber: string,
+  tunerIp: string,
+  quality: string = "medium"
+): StreamEntry {
+  const tempDir = channelTempDir(channelNumber);
 
   // Ensure output directory exists
-  if (!existsSync(outputDir)) {
-    mkdirSyncRecursive(outputDir);
-  }
+  mkdirSyncRecursive(tempDir);
 
   const inputUrl = `http://${tunerIp}:5004/auto/v${channelNumber}`;
-  const segmentFile = join(outputDir, "seg_%03d.ts");
-  const playlistFile = join(outputDir, "index.m3u8");
+  const segmentFile = join(tempDir, "segment_%03d.ts");
+  const playlistFile = join(tempDir, "index.m3u8");
 
-  console.log(`[hdhr-transcoder] Starting FFmpeg for channel ${channelNumber} from ${inputUrl}`);
+  const bitrate = QUALITY_BITRATES[quality] ?? QUALITY_BITRATES.medium;
+  const bitrateStr = `${bitrate}k`;
+  const maxrateStr = `${bitrate}k`;
+  const bufsizeStr = `${bitrate * 2}k`;
+
+  console.log(
+    `[hdhr-transcoder] Starting FFmpeg for channel ${channelNumber} ` +
+      `from ${inputUrl} (quality: ${quality}, bitrate: ${bitrateStr})`
+  );
 
   const args = [
-    "-i", inputUrl,
-    "-c:v", "libx264",
-    "-preset", "veryfast",
-    "-tune", "zerolatency",
-    "-b:v", "3000k",
-    "-maxrate", "4000k",
-    "-bufsize", "6000k",
-    "-c:a", "aac",
-    "-b:a", "128k",
-    "-ar", "48000",
-    "-f", "hls",
-    "-hls_time", "4",
-    "-hls_list_size", "6",
-    "-hls_flags", "delete_segments+append_list",
-    "-hls_segment_filename", segmentFile,
+    "-i",
+    inputUrl,
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-tune",
+    "zerolatency",
+    "-b:v",
+    bitrateStr,
+    "-maxrate",
+    maxrateStr,
+    "-bufsize",
+    bufsizeStr,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-ar",
+    "48000",
+    "-f",
+    "hls",
+    "-hls_time",
+    "4",
+    "-hls_list_size",
+    "6",
+    "-hls_flags",
+    "delete_segments+append_list",
+    "-hls_segment_filename",
+    segmentFile,
     playlistFile,
   ];
 
-  const proc = Bun.spawn([FFMPEG_PATH, ...args], {
-    stderr: "pipe",
-    stdout: "ignore",
-    onExit: (subprocess, exitCode, signalCode) => {
-      console.log(
-        `[hdhr-transcoder] FFmpeg for channel ${channelNumber} exited ` +
-        `(code=${exitCode}, signal=${signalCode})`
-      );
-      // Clean up if still in our map
-      const entry = activeStreams.get(channelNumber);
-      if (entry && entry.process === subprocess) {
-        activeStreams.delete(channelNumber);
-        cleanupChannelDir(channelNumber);
-      }
-    },
+  const proc = spawn(FFMPEG_PATH, args, {
+    stdio: ["ignore", "ignore", "pipe"],
   });
-
-  // Drain stderr to prevent buffer blockage (log errors)
-  const reader = proc.stderr.getReader();
-  const drainStderr = async () => {
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = new TextDecoder().decode(value);
-        // Only log errors/warnings, not every frame info
-        const lines = text.split("\n").filter((l: string) => l.trim());
-        for (const line of lines) {
-          if (line.includes("error") || line.includes("Error") || line.includes("warning") || line.includes("Warning")) {
-            console.error(`[hdhr-transcoder] FFmpeg ch${channelNumber}: ${line.trim()}`);
-          }
-        }
-      }
-    } catch {
-      // Stream closed, that's fine
-    }
-  };
-  drainStderr();
 
   const entry: StreamEntry = {
     process: proc,
-    lastAccessed: Date.now(),
+    tempDir,
+    lastAccess: Date.now(),
     startedAt: Date.now(),
     tunerIp,
     channelNumber,
+    quality,
+    failed: false,
   };
+
+  // Drain stderr to prevent buffer blockage
+  if (proc.stderr) {
+    let stderrBuffer = "";
+    proc.stderr.on("data", (data: Buffer) => {
+      const text = data.toString();
+      stderrBuffer += text;
+      // Log errors/warnings
+      const lines = text.split("\n").filter((l) => l.trim());
+      for (const line of lines) {
+        if (
+          line.includes("error") ||
+          line.includes("Error") ||
+          line.includes("Invalid") ||
+          line.includes("failed")
+        ) {
+          console.error(
+            `[hdhr-transcoder] FFmpeg ch${channelNumber}: ${line.trim()}`
+          );
+        }
+      }
+    });
+
+    // Detect early exit (FFmpeg fails to start)
+    proc.on("close", (code, signal) => {
+      console.log(
+        `[hdhr-transcoder] FFmpeg for channel ${channelNumber} exited ` +
+          `(code=${code}, signal=${signal})`
+      );
+      // If it exited very quickly with an error code, mark as failed
+      const uptime = Date.now() - entry.startedAt;
+      if (
+        (code !== 0 && code !== null && uptime < 5000) ||
+        signal !== null
+      ) {
+        entry.failed = true;
+        if (uptime < 5000) {
+          console.error(
+            `[hdhr-transcoder] FFmpeg for channel ${channelNumber} failed to start. ` +
+              `Last stderr: ${stderrBuffer.slice(-500)}`
+          );
+        }
+      }
+      // Clean up if still in our map
+      const current = activeStreams.get(channelNumber);
+      if (current && current.process === proc) {
+        activeStreams.delete(channelNumber);
+        cleanupChannelDir(channelNumber);
+      }
+    });
+  }
+
+  proc.on("error", (err) => {
+    console.error(
+      `[hdhr-transcoder] FFmpeg spawn error for channel ${channelNumber}:`,
+      err
+    );
+    entry.failed = true;
+    activeStreams.delete(channelNumber);
+  });
 
   activeStreams.set(channelNumber, entry);
   return entry;
@@ -213,32 +336,19 @@ function stopChannel(channelNumber: string): boolean {
  * Remove the temp directory for a channel.
  */
 async function cleanupChannelDir(channelNumber: string): Promise<void> {
-  const dir = channelDir(channelNumber);
+  const dir = channelTempDir(channelNumber);
   try {
     if (existsSync(dir)) {
       await rm(dir, { recursive: true, force: true });
-      console.log(`[hdhr-transcoder] Cleaned up directory for channel ${channelNumber}`);
+      console.log(
+        `[hdhr-transcoder] Cleaned up directory for channel ${channelNumber}`
+      );
     }
   } catch (err) {
-    console.error(`[hdhr-transcoder] Failed to cleanup dir for channel ${channelNumber}:`, err);
-  }
-}
-
-/**
- * Synchronous recursive mkdir (for use before spawn).
- */
-function mkdirSyncRecursive(dir: string): void {
-  const parts = dir.split("/").filter(Boolean);
-  let current = "";
-  for (const part of parts) {
-    current += "/" + part;
-    if (!existsSync(current)) {
-      try {
-        mkdirSync(current, { recursive: true });
-      } catch {
-        // Might have been created by a concurrent request
-      }
-    }
+    console.error(
+      `[hdhr-transcoder] Failed to cleanup dir for channel ${channelNumber}:`,
+      err
+    );
   }
 }
 
@@ -247,11 +357,11 @@ function mkdirSyncRecursive(dir: string): void {
 function cleanupStaleProcesses(): void {
   const now = Date.now();
   for (const [channelNumber, entry] of activeStreams) {
-    const elapsed = now - entry.lastAccessed;
+    const elapsed = now - entry.lastAccess;
     if (elapsed > STALE_TIMEOUT_MS) {
       console.log(
         `[hdhr-transcoder] Channel ${channelNumber} stale ` +
-        `(${Math.round(elapsed / 1000)}s since last access), stopping`
+          `(${Math.round(elapsed / 1000)}s since last access), stopping`
       );
       stopChannel(channelNumber);
     }
@@ -280,14 +390,15 @@ const server = Bun.serve({
 
     try {
       // ── GET /stream/:channel/index.m3u8 ──────────────────────────
-      // Channel numbers can be like "7", "7.1", "11.1" etc.
       const m3u8Match = path.match(/^\/stream\/([\d.]+)\/index\.m3u8$/);
       if (m3u8Match && method === "GET") {
         return await handleM3U8(m3u8Match[1], url);
       }
 
-      // ── GET /stream/:channel/seg_XXX.ts ──────────────────────────
-      const segMatch = path.match(/^\/stream\/([\d.]+)\/(seg_\d+\.ts)$/);
+      // ── GET /stream/:channel/segment/:segment ────────────────────
+      const segMatch = path.match(
+        /^\/stream\/([\d.]+)\/segment\/(segment_\d+\.ts)$/
+      );
       if (segMatch && method === "GET") {
         return await handleSegment(segMatch[1], segMatch[2]);
       }
@@ -295,17 +406,6 @@ const server = Bun.serve({
       // ── GET /status ─────────────────────────────────────────────
       if (path === "/status" && method === "GET") {
         return handleStatus();
-      }
-
-      // ── POST /stop/:channel ─────────────────────────────────────
-      const stopMatch = path.match(/^\/stop\/([\d.]+)$/);
-      if (stopMatch && method === "POST") {
-        return handleStop(stopMatch[1]);
-      }
-
-      // ── POST /stop-all ──────────────────────────────────────────
-      if (path === "/stop-all" && method === "POST") {
-        return handleStopAll();
       }
 
       // ── Health check ────────────────────────────────────────────
@@ -335,21 +435,44 @@ console.log(`[hdhr-transcoder] Service running on http://localhost:${PORT}`);
  *
  * Returns the HLS manifest. Starts an FFmpeg process if one isn't running
  * for this channel. Waits for the m3u8 to be written before responding.
+ *
+ * Query params:
+ *   tunerIp  (required for starting a new stream) — The IP of the HDHomerun tuner
+ *   quality  (optional, default "medium") — Controls video bitrate: low (1500k), medium (3000k), high (6000k)
  */
 async function handleM3U8(channelNumber: string, url: URL): Promise<Response> {
   const tunerIp = url.searchParams.get("tunerIp");
+  const quality = url.searchParams.get("quality") || "medium";
+
+  // Validate quality parameter
+  if (quality && !QUALITY_BITRATES[quality]) {
+    return errorResponse(
+      `Invalid quality "${quality}". Valid values: ${Object.keys(QUALITY_BITRATES).join(", ")}`,
+      400
+    );
+  }
 
   let entry = activeStreams.get(channelNumber);
 
   if (entry) {
     // Process already running — update access time
-    entry.lastAccessed = Date.now();
+    entry.lastAccess = Date.now();
 
     // If the tuner IP changed, we need to restart
     if (tunerIp && tunerIp !== entry.tunerIp) {
       console.log(
         `[hdhr-transcoder] Tuner IP changed for channel ${channelNumber}: ` +
-        `${entry.tunerIp} → ${tunerIp}, restarting`
+          `${entry.tunerIp} → ${tunerIp}, restarting`
+      );
+      stopChannel(channelNumber);
+      entry = undefined;
+    }
+
+    // If the quality changed, we need to restart
+    if (entry && quality !== entry.quality) {
+      console.log(
+        `[hdhr-transcoder] Quality changed for channel ${channelNumber}: ` +
+          `${entry.quality} → ${quality}, restarting`
       );
       stopChannel(channelNumber);
       entry = undefined;
@@ -361,30 +484,44 @@ async function handleM3U8(channelNumber: string, url: URL): Promise<Response> {
     if (!tunerIp) {
       return errorResponse(
         "Missing required query parameter: tunerIp. " +
-        "Usage: /stream/<channel>/index.m3u8?tunerIp=<ip>",
+          "Usage: /stream/<channel>/index.m3u8?tunerIp=<ip>&quality=<low|medium|high>",
         400
       );
     }
 
-    entry = startFFmpeg(channelNumber, tunerIp);
+    entry = startFFmpeg(channelNumber, tunerIp, quality);
+
+    // If FFmpeg failed to start, return 503
+    if (entry.failed) {
+      return errorResponse(
+        `FFmpeg failed to start for channel ${channelNumber}. ` +
+          `Check that FFmpeg is installed and the tuner at ${tunerIp} is reachable.`,
+        503
+      );
+    }
   }
 
   // Wait for the m3u8 file to be created by FFmpeg
   const m3u8File = m3u8Path(channelNumber);
-  const found = await waitForFile(m3u8File, M3U8_WAIT_TIMEOUT_MS, M3U8_POLL_INTERVAL_MS);
+  const found = await waitForFile(
+    m3u8File,
+    M3U8_WAIT_TIMEOUT_MS,
+    M3U8_POLL_INTERVAL_MS
+  );
 
   if (!found) {
-    // Check if the process is still alive
-    if (!activeStreams.has(channelNumber)) {
+    // Check if the process is still alive or failed
+    const currentEntry = activeStreams.get(channelNumber);
+    if (!currentEntry || currentEntry.failed) {
       return errorResponse(
         `FFmpeg process for channel ${channelNumber} exited unexpectedly. ` +
-        `Check that the HDHomerun tuner at ${entry.tunerIp} is reachable.`,
-        502
+          `Check that the HDHomerun tuner at ${tunerIp} is reachable.`,
+        503
       );
     }
     return errorResponse(
       `Timeout waiting for HLS manifest for channel ${channelNumber}. ` +
-      `The tuner may be unreachable or the channel may be unavailable.`,
+        `The tuner may be unreachable or the channel may be unavailable.`,
       504
     );
   }
@@ -400,22 +537,28 @@ async function handleM3U8(channelNumber: string, url: URL): Promise<Response> {
       },
     });
   } catch (err) {
-    console.error(`[hdhr-transcoder] Error reading m3u8 for channel ${channelNumber}:`, err);
+    console.error(
+      `[hdhr-transcoder] Error reading m3u8 for channel ${channelNumber}:`,
+      err
+    );
     return errorResponse("Failed to read HLS manifest", 500);
   }
 }
 
 /**
- * GET /stream/:channelNumber/seg_XXX.ts
+ * GET /stream/:channelNumber/segment/:segment
  *
- * Serves an HLS segment file from disk.
+ * Serves an HLS .ts segment file from the temp directory.
  */
-async function handleSegment(channelNumber: string, segFile: string): Promise<Response> {
+async function handleSegment(
+  channelNumber: string,
+  segFile: string
+): Promise<Response> {
   const entry = activeStreams.get(channelNumber);
 
   // Update last accessed time
   if (entry) {
-    entry.lastAccessed = Date.now();
+    entry.lastAccess = Date.now();
   }
 
   const filePath = segmentPath(channelNumber, segFile);
@@ -433,9 +576,15 @@ async function handleSegment(channelNumber: string, segFile: string): Promise<Re
   } catch (err: any) {
     if (err?.code === "ENOENT") {
       // Segment not found — might have been cleaned up or not yet created
-      return errorResponse(`Segment ${segFile} not found for channel ${channelNumber}`, 404);
+      return errorResponse(
+        `Segment ${segFile} not found for channel ${channelNumber}`,
+        404
+      );
     }
-    console.error(`[hdhr-transcoder] Error reading segment ${segFile} for channel ${channelNumber}:`, err);
+    console.error(
+      `[hdhr-transcoder] Error reading segment ${segFile} for channel ${channelNumber}:`,
+      err
+    );
     return errorResponse("Failed to read segment", 500);
   }
 }
@@ -443,66 +592,43 @@ async function handleSegment(channelNumber: string, segFile: string): Promise<Re
 /**
  * GET /status
  *
- * Returns information about all active streams.
+ * Returns status of active transcode sessions.
  */
 function handleStatus(): Response {
   const now = Date.now();
-  const streams = Array.from(activeStreams.entries()).map(([channelNumber, entry]) => ({
-    channelNumber,
-    tunerIp: entry.tunerIp,
-    uptime: Math.round((now - entry.startedAt) / 1000),
-    lastAccessedAgo: Math.round((now - entry.lastAccessed) / 1000),
-    pid: entry.process.pid,
-  }));
+  const streams = Array.from(activeStreams.entries()).map(
+    ([channelNumber, entry]) => ({
+      channelNumber,
+      tunerIp: entry.tunerIp,
+      quality: entry.quality,
+      tempDir: entry.tempDir,
+      uptime: Math.round((now - entry.startedAt) / 1000),
+      lastAccessAgo: Math.round((now - entry.lastAccess) / 1000),
+      pid: entry.process.pid,
+      failed: entry.failed,
+    })
+  );
 
   return jsonResponse({
     status: "ok",
     activeStreams: streams.length,
     streams,
     config: {
-      staleTimeout: STALE_TIMEOUT_MS / 1000,
-      cleanupInterval: CLEANUP_INTERVAL_MS / 1000,
-      hlsBaseDir: HLS_BASE_DIR,
+      staleTimeoutSec: STALE_TIMEOUT_MS / 1000,
+      cleanupIntervalSec: CLEANUP_INTERVAL_MS / 1000,
+      m3u8WaitTimeoutSec: M3U8_WAIT_TIMEOUT_MS / 1000,
+      qualityPresets: QUALITY_BITRATES,
+      tempDirPattern: `${TEMP_DIR_PREFIX}{channel}`,
     },
-  });
-}
-
-/**
- * POST /stop/:channelNumber
- *
- * Kill the FFmpeg process for a specific channel and clean up.
- */
-function handleStop(channelNumber: string): Response {
-  const stopped = stopChannel(channelNumber);
-  if (stopped) {
-    return jsonResponse({ message: `Channel ${channelNumber} stopped` });
-  }
-  return errorResponse(`No active stream for channel ${channelNumber}`, 404);
-}
-
-/**
- * POST /stop-all
- *
- * Kill all FFmpeg processes and clean up.
- */
-function handleStopAll(): Response {
-  const channels = Array.from(activeStreams.keys());
-  let stoppedCount = 0;
-
-  for (const ch of channels) {
-    if (stopChannel(ch)) stoppedCount++;
-  }
-
-  return jsonResponse({
-    message: `Stopped ${stoppedCount} stream(s)`,
-    stoppedChannels: channels,
   });
 }
 
 // ─── Graceful Shutdown ──────────────────────────────────────────────────────
 
 async function gracefulShutdown(signal: string): Promise<void> {
-  console.log(`\n[hdhr-transcoder] Received ${signal}, shutting down gracefully...`);
+  console.log(
+    `\n[hdhr-transcoder] Received ${signal}, shutting down gracefully...`
+  );
 
   const channels = Array.from(activeStreams.keys());
   for (const ch of channels) {
@@ -510,7 +636,9 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
 
   server.stop();
-  console.log(`[hdhr-transcoder] Stopped ${channels.length} active stream(s). Goodbye.`);
+  console.log(
+    `[hdhr-transcoder] Stopped ${channels.length} active stream(s). Goodbye.`
+  );
   process.exit(0);
 }
 
