@@ -64,23 +64,41 @@ export async function GET(
           const playbackData = await playbackRes.json()
           const mediaSource = playbackData.MediaSources?.[0]
 
-          // Prefer direct play if available — avoids HLS transcoding issues (fragLoadError)
-          if (mediaSource?.SupportsDirectPlay || mediaSource?.SupportsDirectStream) {
-            const directUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
-            return NextResponse.json({
-              url: directUrl,
-              format: 'direct',
-              mediaSourceId: mediaSource.Id || mediaSourceId,
-            })
-          }
-
+          // Always use HLS through our proxy — avoids CORS issues when the browser
+          // can't reach the Jellyfin server directly.  Even when direct play is
+          // available, the raw Jellyfin URL would fail from the browser due to
+          // CORS, so we route everything through our server-side proxy.
           if (mediaSource?.TranscodingUrl) {
             const hlsUrl = mediaSource.TranscodingUrl.startsWith('http')
               ? mediaSource.TranscodingUrl
               : `${server.serverUrl}${mediaSource.TranscodingUrl}`
 
-            // Return JSON with the proxy URL instead of the raw Jellyfin URL
-            // The client will load this URL as the m3u8 source for hls.js
+            const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`
+            return NextResponse.json({
+              url: proxyUrl,
+              format: 'hls',
+              mediaSourceId: mediaSource.Id || mediaSourceId,
+            })
+          }
+
+          // If Jellyfin says direct play but no TranscodingUrl, build an HLS
+          // URL manually — the proxy handles authentication and CORS.
+          if (mediaSource?.SupportsDirectPlay || mediaSource?.SupportsDirectStream) {
+            const hlsParams = new URLSearchParams({
+              MediaSourceId: mediaSource.Id || mediaSourceId,
+              api_key: server.accessToken,
+              DeviceId: deviceId,
+              VideoCodec: 'h264',
+              AudioCodec: 'aac',
+              Container: 'ts',
+              TranscodingMaxAudioChannels: '2',
+              MaxAudioChannels: '2',
+              SegmentContainer: 'ts',
+              MinSegments: '1',
+              BreakOnNonKeyFrames: 'true',
+              StartTimeTicks: '0',
+            })
+            const hlsUrl = `${server.serverUrl}/Videos/${itemId}/stream.${encodeURIComponent('m3u8')}?${hlsParams.toString()}`
             const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`
             return NextResponse.json({
               url: proxyUrl,
@@ -394,21 +412,18 @@ export async function GET(
         const playbackData = await playbackRes.json()
         const mediaSource = playbackData.MediaSources?.[0]
 
-        // Prefer direct play if available — avoids HLS transcoding issues (fragLoadError)
-        if (mediaSource?.SupportsDirectPlay || mediaSource?.SupportsDirectStream) {
-          const directUrl = `${server.serverUrl}/Videos/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
-          return NextResponse.json({
-            url: directUrl,
-            format: 'direct',
-            mediaSourceId: mediaSource.Id || mediaSourceId,
-          })
-        }
-
+        // Always use HLS through our proxy — avoids CORS issues when the browser
+        // can't reach the Jellyfin server directly.
         if (mediaSource?.TranscodingUrl) {
           const hlsUrl = mediaSource.TranscodingUrl.startsWith('http')
             ? mediaSource.TranscodingUrl
             : `${server.serverUrl}${mediaSource.TranscodingUrl}`
           return makeHlsResponse(hlsUrl, mediaSource.Id || mediaSourceId)
+        }
+
+        // If only direct play is available, force HLS transcoding through our proxy
+        if (mediaSource?.SupportsDirectPlay || mediaSource?.SupportsDirectStream) {
+          return makeHlsResponse(buildManualHlsUrl(), mediaSource.Id || mediaSourceId)
         }
       }
     } catch (err) {

@@ -22,11 +22,8 @@ import { LiveTVGuide } from '@/components/LiveTVGuide'
 import { getHDHomerunIp, discoverHDHomerun, setHDHomerunIp } from '@/lib/hdhomerun-client'
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
+import { isAudioType } from '@/lib/media-utils'
 import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers, Radio } from 'lucide-react'
-
-function isAudioType(type: string): boolean {
-  return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
-}
 
 const categoryTitle: Record<string, string> = {
   MOVIE: 'Movies',

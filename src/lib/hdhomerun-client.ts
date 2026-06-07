@@ -121,9 +121,12 @@ export async function fetchHDHomerunLineup(ip: string): Promise<ParsedHDHomerunC
     const timeoutId = setTimeout(() => controller.abort(), 10000)
     
     // Try /lineup.html first (user-specified endpoint)
+    // NOTE: Do NOT set custom headers (like Accept) here — that triggers a
+    // CORS preflight (OPTIONS) request which HDHomerun devices don't handle.
+    // A "simple request" (GET with no custom headers) avoids the preflight
+    // and works as long as the device sends Access-Control-Allow-Origin.
     let res = await fetch(`http://${ip}/lineup.html`, {
       signal: controller.signal,
-      headers: { 'Accept': 'application/json' },
     })
     
     // If /lineup.html doesn't return JSON, try /lineup.json
@@ -134,7 +137,6 @@ export async function fetchHDHomerunLineup(ip: string): Promise<ParsedHDHomerunC
       
       res = await fetch(`http://${ip}/lineup.json`, {
         signal: controller2.signal,
-        headers: { 'Accept': 'application/json' },
       })
       
       clearTimeout(timeoutId2)

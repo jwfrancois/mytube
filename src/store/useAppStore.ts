@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isAudioType } from '@/lib/media-utils'
 
 export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'PODCAST' | 'AUDIOBOOK' | 'COLLECTION' | 'JELLYFIN' | 'LIVETV'
 export type SortType = 'recent' | 'popular'
@@ -37,10 +38,6 @@ interface JellyfinServerInfo {
   username: string
   connected: boolean
   lastConnected: string | null
-}
-
-function isAudioType(type: string): boolean {
-  return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
 }
 
 interface AppState {
@@ -154,7 +151,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Category
   activeCategory: 'ALL',
-  setActiveCategory: (cat) => set({ activeCategory: cat, activeGenre: '' }),
+  setActiveCategory: (cat) => set({ activeCategory: cat, activeGenre: '', isLoading: true, mediaItems: [] }),
   activeGenre: '',
   setActiveGenre: (genre) => set({ activeGenre: genre }),
   sortBy: 'recent',

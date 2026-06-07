@@ -40,6 +40,13 @@ export async function GET(request: NextRequest) {
       } catch (err) {
         console.error('Failed to check HDHomerun tuner:', err)
       }
+
+      // Fallback: use the HDHOMERUN_IP env var if no DB record exists.
+      // This ensures the client always gets a tuner IP even if the tuner
+      // was never registered through the Settings UI.
+      if (!hdhrTunerIp) {
+        hdhrTunerIp = process.env.HDHOMERUN_IP || null
+      }
     }
 
     // Filter by category

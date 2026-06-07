@@ -48,6 +48,7 @@ import { AICompanionPanel } from '@/components/AICompanionPanel'
 import { VisualMusicExperience } from '@/components/VisualMusicExperience'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
+import { isAudioType } from '@/lib/media-utils'
 
 // ─── hls.js dynamic import ──────────────────────────────────────────────────
 // hls.js is a client-only library, so we import it dynamically
@@ -80,10 +81,6 @@ function formatTime(seconds: number): string {
   const s = Math.floor(seconds % 60)
   if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-function isAudioType(type: string): boolean {
-  return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
 }
 
 // Map of icon components by type (declared outside render)
@@ -336,23 +333,11 @@ function useHlsVideoPlayer(
         }
       }
 
-      if (data.format === 'direct' && data.url) {
-        // Direct play — set video src directly (no hls.js needed)
-        const video = videoRef.current
-        if (video) {
-          video.src = data.url
-          setCurrentSrc(data.url)
-          setStrategy('direct')
-          video.load()
-          video.play().catch(() => {})
-        }
-        return
-      } else if (data.format === 'hls' && data.url) {
-        await playHlsStream(data.url, false)
-      } else if (data.url) {
+      // All streams now use HLS through the proxy (avoids CORS issues)
+      if (data.url) {
         await playHlsStream(data.url, false)
       } else {
-        throw new Error('No HLS URL in response')
+        throw new Error('No stream URL in response')
       }
     } catch (err) {
       console.error('[VideoPlayer] Start playback failed:', err)
@@ -388,14 +373,12 @@ function useHlsVideoPlayer(
     await playHlsStream(m3u8Url, true)
   }, [playHlsStream])
 
-  // Handle video element error (for direct/native strategies)
+  // Handle video element error (for direct/native strategies — not used by hls.js which has its own error handling)
   const handleVideoError = useCallback(() => {
     const video = videoRef.current
     if (!video) return
     const error = video.error
     if (!error) return
-
-    if (strategy === 'hls') return
 
     const errorMsg = error.code === MediaError.MEDIA_ERR_ABORTED
       ? 'Playback was aborted.'
@@ -410,7 +393,7 @@ function useHlsVideoPlayer(
     console.warn(`[VideoPlayer] Video element error:`, errorMsg)
     setVideoError(errorMsg)
     setVideoLoading(false)
-  }, [strategy, videoRef])
+  }, [videoRef])
 
   const handleCanPlay = useCallback(() => {
     if (loadingTimeoutRef.current) {
@@ -942,9 +925,7 @@ export function VideoPlayer() {
     videoLoading,
     setVideoLoading,
     strategy,
-    setStrategy: setStreamStrategy,
     currentSrc,
-    setCurrentSrc: setStreamCurrentSrc,
     handleVideoError,
     handleCanPlay,
     handleWaiting,
@@ -968,16 +949,23 @@ export function VideoPlayer() {
 
   // Track previous media ID to reset state on change
   const prevMediaIdRef = useRef<string | undefined>(undefined)
-  if (prevMediaIdRef.current !== currentMedia?.id) {
-    prevMediaIdRef.current = currentMedia?.id
-    if (currentMedia) {
-      // Reset local UI state during render (state setters are OK during render)
-      // Actual HLS cleanup and playback restart happen in the useEffect below
-      setVideoError(null)
-      setLiked(false)
-      setDisliked(false)
-      setIsVideoPlaying(false)
+  // Hook-returned setter — must be called in useEffect (not during render)
+  useEffect(() => {
+    if (prevMediaIdRef.current !== currentMedia?.id) {
+      prevMediaIdRef.current = currentMedia?.id
+      if (currentMedia) {
+        setVideoError(null)
+      }
     }
+  }, [currentMedia?.id, setVideoError])
+  // Local useState setters — adjusting state based on props is OK during render
+  // (React docs: "Adjusting state based on props" pattern)
+  const [prevLocalMediaId, setPrevLocalMediaId] = useState<string | undefined>(undefined)
+  if (prevLocalMediaId !== currentMedia?.id && currentMedia) {
+    setPrevLocalMediaId(currentMedia?.id)
+    setLiked(false)
+    setDisliked(false)
+    setIsVideoPlaying(false)
   }
 
   // Register video element in state (for SoundSettings)
@@ -1010,31 +998,16 @@ export function VideoPlayer() {
       const contentType = res.headers.get('content-type') || ''
 
       if (contentType.includes('application/json')) {
-        // HDHomerun or Jellyfin Live TV: returns JSON with the HLS URL
+        // HDHomerun or Jellyfin Live TV: returns JSON with the stream URL
         const data = await res.json()
-        if (data.format === 'direct' && data.url) {
-          // Direct play — set video src directly (no hls.js needed)
-          const video = videoRef.current
-          if (video) {
-            video.src = data.url
-            setStreamCurrentSrc(data.url)
-            setStreamStrategy('direct')
-            video.load()
-            video.play().catch(() => {})
-          }
-        } else if (data.format === 'hls' && data.url) {
-          playDirectM3U8(data.url)
-        } else if (data.url) {
+        if (data.url) {
           playDirectM3U8(data.url)
         } else {
           setVideoError('No playable stream URL found for this channel.')
           setVideoLoading(false)
         }
-      } else if (contentType.includes('mpegurl') || streamUrl.includes('.m3u8')) {
-        // Built-in channels: returns M3U8 playlist directly
-        playDirectM3U8(streamUrl)
       } else {
-        // Try treating the response as M3U8 anyway (fallback)
+        // Built-in channels: returns M3U8 playlist directly
         playDirectM3U8(streamUrl)
       }
     } catch (err) {
@@ -1042,7 +1015,7 @@ export function VideoPlayer() {
       setVideoError('Failed to load Live TV stream. Check your network connection.')
       setVideoLoading(false)
     }
-  }, [playDirectM3U8, setVideoError, setVideoLoading, hdhrTunerIp, setStreamCurrentSrc, setStreamStrategy])
+  }, [playDirectM3U8, setVideoError, setVideoLoading, hdhrTunerIp])
 
   // Sync video element volume/speed with shared store state
   useEffect(() => {
@@ -1374,13 +1347,6 @@ export function VideoPlayer() {
     LIVETV: 'bg-red-500/10 text-red-400',
   }[currentMedia.type] || ''
 
-  // Strategy label for the retry button
-  const strategyLabel: Record<StreamStrategy, string> = {
-    direct: 'Direct Play',
-    hls: 'HLS Streaming',
-    transcode: 'Transcoding',
-  }
-
   return (
     <div className={cn("flex flex-col lg:flex-row h-[calc(100vh-3.5rem)]")}>
       {/* Main Content */}
@@ -1447,7 +1413,7 @@ export function VideoPlayer() {
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 className="h-10 w-10 text-white animate-spin" />
                   <span className="text-white text-sm">
-                    {isLiveTV ? 'Connecting to live stream...' : strategy === 'hls' ? 'Loading HLS stream...' : strategy === 'transcode' ? 'Transcoding video...' : 'Loading video...'}
+                    {isLiveTV ? 'Connecting to live stream...' : 'Loading video...'}
                   </span>
                 </div>
               </div>
@@ -1470,26 +1436,6 @@ export function VideoPlayer() {
                       <RefreshCw className="h-4 w-4" />
                       Retry
                     </Button>
-                    {strategy !== 'hls' && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => trySpecificStrategy('hls')}
-                        className="gap-1"
-                      >
-                        Try HLS
-                      </Button>
-                    )}
-                    {strategy !== 'transcode' && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => trySpecificStrategy('transcode')}
-                        className="gap-1"
-                      >
-                        Try Transcoding
-                      </Button>
-                    )}
                   </div>
                 </div>
               </div>
@@ -1593,16 +1539,6 @@ export function VideoPlayer() {
               </Popover>
             </div>
           </div>
-
-          {/* Strategy indicator */}
-          {isJellyfin && strategy !== 'direct' && !videoError && (
-            <div className="mt-2 flex items-center gap-2">
-              <Badge variant="outline" className="text-xs gap-1">
-                <Server className="h-3 w-3" />
-                {strategyLabel[strategy]}
-              </Badge>
-            </div>
-          )}
 
           {/* Video Info */}
           <div className="mt-4">

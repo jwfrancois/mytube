@@ -9,17 +9,9 @@ import {
   Music,
   Mic,
   Headphones,
-  Clock,
-  ThumbsUp,
-  Flame,
-  Compass,
-  History,
-  ListVideo,
   Settings,
-  HelpCircle,
   Server,
   FolderOpen,
-  Sparkles,
   Network,
   Radio,
 } from 'lucide-react'
@@ -27,7 +19,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 interface SidebarItem {
   icon: React.ElementType
@@ -114,9 +106,6 @@ export function Sidebar() {
     { icon: Radio, label: 'Live TV', category: 'LIVETV', active: showLiveTV, action: () => {
       setShowLiveTV(!showLiveTV)
     }},
-    { icon: Sparkles, label: 'AI Concierge', category: 'ALL', active: false },
-    { icon: Flame, label: 'Trending', category: 'ALL', active: false },
-    { icon: Compass, label: 'Explore', category: 'ALL', active: false },
     { icon: Network, label: 'Knowledge Graph', active: showKnowledgeGraph, action: () => {
       setShowKnowledgeGraph(!showKnowledgeGraph)
     }},
@@ -133,13 +122,6 @@ export function Sidebar() {
 
   const jellyfinItems: SidebarItem[] = [
     { icon: Server, label: 'Jellyfin NAS', category: 'JELLYFIN', active: activeCategory === 'JELLYFIN' },
-  ]
-
-  const libraryItems: SidebarItem[] = [
-    { icon: History, label: 'History', category: undefined, active: false },
-    { icon: ThumbsUp, label: 'Liked Videos', category: undefined, active: false },
-    { icon: Clock, label: 'Watch Later', category: undefined, active: false },
-    { icon: ListVideo, label: 'Playlists', category: undefined, active: false },
   ]
 
   const handleItemClick = (item: SidebarItem) => {
@@ -173,16 +155,6 @@ export function Sidebar() {
       }
       if (showLiveTV) {
         setShowLiveTV(false)
-      }
-
-      // If AI Concierge, scroll to the concierge panel
-      if (item.label === 'AI Concierge') {
-        setTimeout(() => {
-          const el = document.getElementById('ai-concierge')
-          if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-          }
-        }, 100)
       }
     }
   }
@@ -362,24 +334,6 @@ export function Sidebar() {
 
           <Separator className="my-2 bg-white/5" />
 
-          {/* Library */}
-          <div className="px-2">
-            <p className="px-3 mb-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">Library</p>
-            {libraryItems.map((item) => (
-              <Button
-                key={item.label}
-                variant="ghost"
-                className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg transition-all duration-200"
-                onClick={() => handleItemClick(item)}
-              >
-                <item.icon className="h-5 w-5 shrink-0" />
-                <span>{item.label}</span>
-              </Button>
-            ))}
-          </div>
-
-          <Separator className="my-2 bg-white/5" />
-
           {/* Bottom */}
           <div className="px-2">
             <Button
@@ -390,18 +344,11 @@ export function Sidebar() {
               <Settings className="h-5 w-5 shrink-0" />
               <span>Settings</span>
             </Button>
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg"
-            >
-              <HelpCircle className="h-5 w-5 shrink-0" />
-              <span>Help</span>
-            </Button>
           </div>
 
           {/* Footer */}
           <div className="px-6 py-4 text-[10px] text-muted-foreground/40">
-            <p>&copy; 2024 MyTube</p>
+            <p>&copy; 2025 MyTube</p>
             <p className="mt-0.5">Premium streaming platform</p>
           </div>
         </div>
