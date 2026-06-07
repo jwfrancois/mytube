@@ -25,18 +25,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Fetch HDHomerun channels if a tuner is registered
+    // HDHomerun channels are fetched client-side only (the server may be in the cloud
+    // and unable to reach local network devices). Return the tuner IP if known so the
+    // client can fetch directly from the user's browser.
+    let hdhrTunerIp: string | null = null
     if (includeHDHomerun) {
       try {
         const tuner = await db.hDHomerunTuner.findFirst({
           orderBy: { connected: 'desc' },
         })
         if (tuner) {
-          const hdhrChannels = await fetchHDHomerunChannels(tuner.tunerIp)
-          channels = [...channels, ...hdhrChannels]
+          hdhrTunerIp = tuner.tunerIp
         }
       } catch (err) {
-        console.error('Failed to fetch HDHomerun channels:', err)
+        console.error('Failed to check HDHomerun tuner:', err)
       }
     }
 
@@ -69,6 +71,7 @@ export async function GET(request: NextRequest) {
       categories: LIVE_TV_CATEGORIES,
       byCategory,
       total: channels.length,
+      hdhrTunerIp, // Client uses this to fetch HDHomerun channels directly
     })
   } catch (error) {
     console.error('Live TV channels error:', error)
@@ -122,50 +125,5 @@ function mapJellyfinChannelType(channelType: string, name: string): string {
   return 'entertainment'
 }
 
-/**
- * Fetch channel lineup from an HDHomerun tuner.
- */
-async function fetchHDHomerunChannels(tunerIp: string): Promise<typeof BUILT_IN_CHANNELS> {
-  try {
-    const lineupUrl = `http://${tunerIp}/lineup.json`
-    const res = await fetch(lineupUrl, {
-      signal: AbortSignal.timeout(15000),
-      headers: { 'User-Agent': 'MyTube/1.0' },
-    })
-
-    if (!res.ok) return []
-
-    const lineup = await res.json()
-
-    return lineup.map((ch: any) => ({
-      id: `hdhr-${ch.GuideNumber}`,
-      name: ch.GuideName || `Channel ${ch.GuideNumber}`,
-      category: mapHDHRCategory(ch.GuideName || ''),
-      streamUrl: `/api/livetv/stream/hdhr-${encodeURIComponent(ch.GuideNumber)}`,
-      logoUrl: ch.ImageURL || ch.LogoURL || undefined,
-      description: `${ch.GuideName || 'Channel ' + ch.GuideNumber} — Channel ${ch.GuideNumber}${ch.HD ? ' (HD)' : ''}`,
-      source: 'hdhomerun',
-      language: 'English',
-      country: 'US',
-    }))
-  } catch {
-    return []
-  }
-}
-
-function mapHDHRCategory(name: string): string {
-  const n = name.toLowerCase()
-  if (/news|cnn|msnbc|bbc|nbc news|abc news|cbsn|eyewitness/.test(n)) return 'news'
-  if (/sports|espn|fs1|nfl|nba|mlb|nhl|golf|tennis|olymp|rac|motor|fox sports|stadium/.test(n)) return 'sports'
-  if (/kids|kid|child|cartoon|nick|disney|pbs kids|baby|junior|teen|sprout/.test(n)) return 'kids'
-  if (/movie|film|cinema|flick|reel|halmark|hbo|showtime|starz/.test(n)) return 'movies'
-  if (/music|mtv|vh1|cmt|bet|concert|piano|jazz|classical|stingray|vevo/.test(n)) return 'music'
-  if (/food|cook|home|garden|travel|diy|craft|hgtv|tlc|bravo|style|fashion|wedding/.test(n)) return 'lifestyle'
-  if (/comedy|funny|laugh|stand.?up|improv/.test(n)) return 'comedy'
-  if (/science|tech|nasa|discovery|space|physics|nat geo|animal|planet/.test(n)) return 'science'
-  if (/crime|investigation|detective|forensic|murder|mystery|justice|court|law/.test(n)) return 'truecrime'
-  if (/game|gaming|esport|twitch|playstation|xbox/.test(n)) return 'gaming'
-  if (/univision|telemundo|azteca|gala|tv5|france|dw|al jazeera|nhk|cctv|arirang|rt/.test(n)) return 'international'
-  if (/abc|nbc|cbs|fox|pbs|cw|ion|metv|antenna|charge|comet|bumble/.test(n)) return 'entertainment'
-  return 'entertainment'
-}
+// HDHomerun channels are fetched client-side only to avoid server-side timeouts
+// when the server is in the cloud and can't reach local network devices.

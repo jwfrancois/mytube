@@ -999,3 +999,32 @@ Stage Summary:
 - Stream endpoint accepts tunerIp from client to work around server network limitations
 - All code compiles and the dev server starts successfully with 200 OK responses
 
+---
+Task ID: 9
+Agent: Main Agent
+Task: Fix blank "Z" screen, server stability, and HDHomerun channel display
+
+Work Log:
+- Diagnosed blank "Z" screen: Caddy gateway serves static Z.ai logo fallback page when Next.js server on port 3000 is unreachable (502 Bad Gateway)
+- Root cause of server instability: HDHomerun auto-connect API route made 10+ second HTTP requests to local network device (10.0.0.187) from the cloud server, causing timeouts that destabilized the entire Next.js process
+- Fixed HDHomerun auto-connect route (/api/hdhomerun/auto-connect): Removed server-side HTTP calls to the tuner device. Now just checks the DB for known tuners and returns the IP for client-side discovery. Response time reduced from 10+ seconds to ~15ms
+- Fixed LiveTV channels route (/api/livetv/channels): Removed server-side fetch to HDHomerun tuner (would timeout from cloud). Now returns `hdhrTunerIp` field so client can fetch channels directly from user's browser
+- Updated LiveTVSection component: Always fetches HDHomerun channels client-side using the tuner IP from the server response or localStorage/env var
+- Updated hdhomerun-client.ts: Changed fetchHDHomerunLineup() to try /lineup.html first (user-specified endpoint), then fall back to /lineup.json if the response isn't JSON
+- Updated page.tsx auto-connect logic: Handles new response format from auto-connect API (knownTunerIp/defaultIp fields for client-side fallback)
+- Added in-memory caching (2-min TTL) to /api/jellyfin/category route to reduce external Jellyfin API calls
+- Added in-memory caching (2-min TTL) to /api/media route to reduce duplicate database/API queries
+- Disabled Prisma query logging (changed from log: ['query'] to log: ['error']) to reduce memory overhead from massive log output
+- Reduced batch concurrency in media route from 6 to 2 parallel category fetches
+- Verified VideoPlayer setVideoLoading is properly defined (was fixed in earlier session)
+- Started server with detached child process (detached: true, child.unref()) for persistence
+
+Stage Summary:
+- Blank "Z" screen is FIXED — server now runs stably and Caddy gateway proxies correctly
+- HDHomerun auto-connect no longer blocks the server (15ms vs 10+ seconds)
+- HDHomerun channel lineup now uses /lineup.html endpoint as user specified, with /lineup.json fallback
+- All HDHomerun channel fetching is client-side only (server can't reach local network devices from cloud)
+- API response caching reduces external calls and improves stability
+- Video player works — tested with "The Ultimate Dog Show" playing successfully
+- Live TV section renders correctly with categories, search, and external service links
+- No console errors or runtime crashes

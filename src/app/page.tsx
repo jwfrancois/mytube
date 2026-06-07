@@ -142,8 +142,8 @@ export default function Home() {
   }, [setJellyfinConnected, setJellyfinServer])
 
   // Auto-connect HDHomerun tuner on mount
-  // Try server-side auto-connect first, then fall back to client-side discovery
-  // (server can't reach local network devices, but the user's browser can)
+  // The server-side auto-connect just checks the DB (no HTTP calls to the tuner).
+  // Client-side code then verifies reachability from the user's browser.
   const hdhrAutoConnectRef = useRef(false)
 
   useEffect(() => {
@@ -151,7 +151,8 @@ export default function Home() {
     hdhrAutoConnectRef.current = true
 
     const autoConnectHDHR = async () => {
-      // Step 1: Try server-side auto-connect (works if server is on the same network)
+      // Step 1: Check server-side DB for known tuner
+      let hdhrIp: string | null = null
       try {
         const res = await fetch('/api/hdhomerun/auto-connect', {
           method: 'POST',
@@ -162,23 +163,25 @@ export default function Home() {
           if (data.success && data.tuner) {
             setHdhrConnected(true)
             setHdhrTunerIp(data.tuner.tunerIp)
-            return // Server connected successfully
+            return // Already connected
           }
+          // Server knows a tuner IP but couldn't verify — try client-side
+          hdhrIp = data.knownTunerIp || data.defaultIp || null
         }
       } catch (err) {
         console.warn('Server-side HDHomerun auto-connect failed:', err)
       }
 
-      // Step 2: Server couldn't connect — try client-side discovery
-      // The user's browser IS on the local network and CAN reach the HDHomerun
-      const hdhrIp = getHDHomerunIp()
+      // Step 2: Client-side discovery — try known IP or env var
+      if (!hdhrIp) {
+        hdhrIp = getHDHomerunIp()
+      }
       if (hdhrIp) {
         try {
           const deviceInfo = await discoverHDHomerun(hdhrIp)
           if (deviceInfo) {
             setHdhrConnected(true)
             setHdhrTunerIp(hdhrIp)
-            // Persist the IP for future sessions
             setHDHomerunIp(hdhrIp)
             console.log('[MyTube] HDHomerun discovered via client-side at', hdhrIp, deviceInfo.ModelName || deviceInfo.Model)
           }

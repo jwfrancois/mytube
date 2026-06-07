@@ -10,6 +10,11 @@ import { NextRequest, NextResponse } from 'next/server'
  *   limit - max items to return (default 100)
  */
 
+// In-memory cache to reduce external Jellyfin API calls
+// TTL: 2 minutes — balances freshness with server stability
+const categoryCache = new Map<string, { data: any; expires: number }>()
+const CACHE_TTL = 2 * 60 * 1000 // 2 minutes
+
 const TYPE_TO_COLLECTION_TYPE: Record<string, string[]> = {
   MOVIE: ['movies', 'homevideos'],
   TV_SHOW: ['tvshows'],
@@ -55,6 +60,13 @@ export async function GET(request: NextRequest) {
 
     if (!type) {
       return NextResponse.json({ items: [], totalRecordCount: 0 })
+    }
+
+    // Check cache first
+    const cacheKey = `${type}-${limit}`
+    const cached = categoryCache.get(cacheKey)
+    if (cached && cached.expires > Date.now()) {
+      return NextResponse.json(cached.data)
     }
 
     const collectionTypes = TYPE_TO_COLLECTION_TYPE[type]
@@ -235,10 +247,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    const result = {
       items: allItems,
       totalRecordCount: allItems.length,
-    })
+    }
+    
+    // Cache the result
+    categoryCache.set(cacheKey, { data: result, expires: Date.now() + CACHE_TTL })
+    
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Jellyfin category error:', error)
     return NextResponse.json({ items: [], totalRecordCount: 0 })

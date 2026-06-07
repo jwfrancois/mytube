@@ -110,6 +110,7 @@ export async function discoverHDHomerun(ip: string): Promise<HDHomerunDeviceInfo
 
 /**
  * Fetch the channel lineup from an HDHomerun tuner directly from the browser.
+ * Uses /lineup.html endpoint as specified by the user.
  * Returns parsed channels in the LiveTVChannel format.
  */
 export async function fetchHDHomerunLineup(ip: string): Promise<ParsedHDHomerunChannel[]> {
@@ -117,14 +118,29 @@ export async function fetchHDHomerunLineup(ip: string): Promise<ParsedHDHomerunC
   
   try {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000)
+    const timeoutId = setTimeout(() => controller.abort(), 10000)
     
-    const res = await fetch(`http://${ip}/lineup.json`, {
+    // Try /lineup.html first (user-specified endpoint)
+    let res = await fetch(`http://${ip}/lineup.html`, {
       signal: controller.signal,
       headers: { 'Accept': 'application/json' },
     })
     
-    clearTimeout(timeoutId)
+    // If /lineup.html doesn't return JSON, try /lineup.json
+    if (!res.ok || !res.headers.get('content-type')?.includes('json')) {
+      clearTimeout(timeoutId)
+      const controller2 = new AbortController()
+      const timeoutId2 = setTimeout(() => controller2.abort(), 10000)
+      
+      res = await fetch(`http://${ip}/lineup.json`, {
+        signal: controller2.signal,
+        headers: { 'Accept': 'application/json' },
+      })
+      
+      clearTimeout(timeoutId2)
+    } else {
+      clearTimeout(timeoutId)
+    }
     
     if (!res.ok) return []
     

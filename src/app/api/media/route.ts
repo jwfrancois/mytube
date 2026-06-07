@@ -1,6 +1,10 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
+// In-memory cache for the media list
+const mediaCache = new Map<string, { data: any; expires: number }>()
+const CACHE_TTL = 2 * 60 * 1000 // 2 minutes
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -10,6 +14,13 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50')
     const offset = parseInt(searchParams.get('offset') || '0')
     const includeJellyfin = searchParams.get('includeJellyfin') === 'true'
+
+    // Check cache for this query
+    const cacheKey = `${type || 'all'}-${genre || 'all'}-${sort}-${limit}-${offset}-${includeJellyfin}`
+    const cached = mediaCache.get(cacheKey)
+    if (cached && cached.expires > Date.now()) {
+      return NextResponse.json(cached.data)
+    }
 
     const where: Record<string, string> = {}
     if (type) where.type = type
@@ -31,36 +42,31 @@ export async function GET(request: NextRequest) {
 
     if (includeJellyfin) {
       try {
-        if (type) {
-          // Fetch items of a specific type from Jellyfin
-          const jellyfinRes = await fetch(
-            `${request.nextUrl.origin}/api/jellyfin/category?type=${type}&limit=${limit}`,
-            { signal: AbortSignal.timeout(15000) }
-          )
-          if (jellyfinRes.ok) {
-            const jellyfinData = await jellyfinRes.json()
-            jellyfinItems = jellyfinData.items || []
-            jellyfinTotal = jellyfinData.totalRecordCount || 0
-          }
-        } else {
-          // No type filter (ALL/home) — fetch items from all Jellyfin categories
+        const server = await db.jellyfinServer.findFirst()
+        if (server && server.connected) {
+          // Fetch all categories with reduced concurrency (3 at a time instead of 6)
           const types = ['MOVIE', 'TV_SHOW', 'MUSIC', 'PODCAST', 'AUDIOBOOK', 'COLLECTION']
-          const results = await Promise.allSettled(
-            types.map(async (t) => {
-              const jellyfinRes = await fetch(
-                `${request.nextUrl.origin}/api/jellyfin/category?type=${t}&limit=20`,
-                { signal: AbortSignal.timeout(15000) }
-              )
-              if (!jellyfinRes.ok) return []
-              const jellyfinData = await jellyfinRes.json()
-              return jellyfinData.items || []
+          
+          // Process in batches of 2 to reduce memory pressure
+          for (let i = 0; i < types.length; i += 2) {
+            const batch = types.slice(i, i + 2)
+            const results = await Promise.allSettled(
+              batch.map(async (t) => {
+                const jellyfinRes = await fetch(
+                  `${request.nextUrl.origin}/api/jellyfin/category?type=${t}&limit=20`,
+                  { signal: AbortSignal.timeout(15000) }
+                )
+                if (!jellyfinRes.ok) return []
+                const jellyfinData = await jellyfinRes.json()
+                return jellyfinData.items || []
+              })
+            )
+            results.forEach((result) => {
+              if (result.status === 'fulfilled') {
+                jellyfinItems.push(...result.value)
+              }
             })
-          )
-          results.forEach((result) => {
-            if (result.status === 'fulfilled') {
-              jellyfinItems.push(...result.value)
-            }
-          })
+          }
           jellyfinTotal = jellyfinItems.length
         }
       } catch (err) {
@@ -78,12 +84,17 @@ export async function GET(request: NextRequest) {
       return true
     })
 
-    return NextResponse.json({
+    const result = {
       media: allMedia,
       total: total + jellyfinTotal,
       localCount: total,
       jellyfinCount: jellyfinTotal,
-    })
+    }
+    
+    // Cache the result
+    mediaCache.set(cacheKey, { data: result, expires: Date.now() + CACHE_TTL })
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Error fetching media:', error)
     return NextResponse.json({ error: 'Failed to fetch media' }, { status: 500 })
@@ -108,6 +119,10 @@ export async function POST(request: NextRequest) {
         views: 0,
       },
     })
+    
+    // Invalidate cache on new media creation
+    mediaCache.clear()
+    
     return NextResponse.json(media, { status: 201 })
   } catch (error) {
     console.error('Error creating media:', error)
