@@ -1028,3 +1028,41 @@ Stage Summary:
 - Video player works — tested with "The Ultimate Dog Show" playing successfully
 - Live TV section renders correctly with categories, search, and external service links
 - No console errors or runtime crashes
+
+---
+Task ID: 11
+Agent: Main Agent
+Task: Fix HLS manifestLoadError, HDHomerun transcoder routing, MediaGrid duplicate keys, audiobook double playback
+
+Work Log:
+- Fixed HLS manifestLoadError handling in VideoPlayer.tsx:
+  - Added hlsNetworkRetryRef to track hls.js network error retries
+  - Changed NETWORK_ERROR handler to retry at most 2 times before giving up (previously infinite retry with hls.startLoad())
+  - Added specific error messages for manifestLoadError vs other network errors
+  - Added non-fatal error logging (previously only fatal errors were logged)
+  - Reset hlsNetworkRetryRef on media change and manual retry
+- Fixed HDHomerun transcoder segment URL routing:
+  - The transcoder writes relative segment paths (e.g., segment_000.ts) in the m3u8 manifest
+  - When the proxy-segment endpoint resolves them against the m3u8 base URL, the resulting path is /stream/{ch}/segment_000.ts
+  - But the transcoder only matched /stream/{ch}/segment/segment_000.ts (with /segment/ prefix)
+  - Added a second route matcher for /stream/{ch}/segment_000.ts pattern
+  - Started the hdhr-transcoder mini-service (was not running)
+- Fixed MediaGrid.tsx duplicate key errors:
+  - Changed keys from ${item.id}-${idx} to ${item.isJellyfin ? 'jf' : 'local'}-${item.id}
+  - Applied to all 4 key locations: expanded grid, horizontal shelf, genre groups, and flat grid
+  - This prevents collisions between local and Jellyfin items with the same numeric ID
+- Fixed audiobook double playback in AudioPlayerBar.tsx:
+  - The play/pause sync effect and the loadAndPlay effect both fired when a new track was set
+  - Added track-change detection in the play/pause sync effect using currentSrcIdRef
+  - When a track change is in progress, the play/pause effect skips (loadAndPlay already handles it)
+  - Only when the track hasn't changed does the play/pause effect run
+- Added non-OK response handling for Live TV streams:
+  - handleLiveTVStream now checks res.ok and shows server error messages to the user
+  - Previously, non-OK responses were silently ignored, leaving the player stuck loading
+
+Stage Summary:
+- HLS manifestLoadError now shows proper user-facing error messages instead of infinite retry
+- HDHomerun transcoder properly serves segments at both URL patterns
+- MediaGrid keys are unique across local and Jellyfin items (no duplicate key warnings)
+- Audiobook double playback eliminated by preventing redundant play() calls during track changes
+- Live TV stream errors are now shown to the user with retry button

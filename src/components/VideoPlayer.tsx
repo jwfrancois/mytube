@@ -166,6 +166,7 @@ function useHlsVideoPlayer(
   const [strategy, setStrategy] = useState<StreamStrategy>('hls')
   const [currentSrc, setCurrentSrc] = useState<string | null>(null)
   const retryCountRef = useRef(0)
+  const hlsNetworkRetryRef = useRef(0) // track hls.js internal network retries
   const maxRetries = 3
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -248,9 +249,30 @@ function useHlsVideoPlayer(
         if (data.fatal) {
           console.error('[VideoPlayer] HLS fatal error:', data.type, data.details)
           switch (data.type) {
-            case hlsModule.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad()
+            case hlsModule.ErrorTypes.NETWORK_ERROR: {
+              // Track our own retry count for network errors.  hls.js may
+              // exhaust its internal retries before delivering a fatal error,
+              // so we limit our own recovery attempts to avoid infinite loops.
+              hlsNetworkRetryRef.current++
+              if (hlsNetworkRetryRef.current <= 2) {
+                console.log(`[VideoPlayer] Retrying network error (attempt ${hlsNetworkRetryRef.current}/2)…`)
+                hls.startLoad()
+              } else {
+                // Give up — show user-friendly message
+                destroyHls()
+                if (data.details === 'manifestLoadError') {
+                  setVideoError(isLive
+                    ? 'Unable to load this live stream. The channel may be offline or the server is unreachable.'
+                    : 'Unable to load the video stream. The server may be temporarily unavailable or still preparing the video.')
+                } else {
+                  setVideoError(isLive
+                    ? 'Network error while streaming this channel. Please try again.'
+                    : 'A network error occurred while playing this video. Check your connection and try again.')
+                }
+                setVideoLoading(false)
+              }
               break
+            }
             case hlsModule.ErrorTypes.MEDIA_ERROR:
               hls.recoverMediaError()
               break
@@ -262,6 +284,9 @@ function useHlsVideoPlayer(
               setVideoLoading(false)
               break
           }
+        } else {
+          // Non-fatal errors — just log them
+          console.warn('[VideoPlayer] HLS non-fatal error:', data.type, data.details)
         }
       })
 
@@ -412,12 +437,14 @@ function useHlsVideoPlayer(
     setVideoLoading(true)
     setStrategy('hls')
     retryCountRef.current = 0
+    hlsNetworkRetryRef.current = 0
     setCurrentSrc(null)
   }, [destroyHls])
 
   // Manual retry
   const manualRetry = useCallback(() => {
     retryCountRef.current = 0
+    hlsNetworkRetryRef.current = 0
     startPlayback()
   }, [startPlayback])
 
@@ -956,6 +983,14 @@ export function VideoPlayer() {
       const streamUrl = `/api/livetv/stream/${encodeURIComponent(channelId)}${params.toString() ? '?' + params.toString() : ''}`
       const res = await fetch(streamUrl)
 
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        console.error('[VideoPlayer] Live TV stream endpoint error:', res.status, errorData)
+        setVideoError(errorData.error || `Failed to load Live TV stream (HTTP ${res.status}).`)
+        setVideoLoading(false)
+        return
+      }
+
       const contentType = res.headers.get('content-type') || ''
 
       if (contentType.includes('application/json')) {
@@ -978,7 +1013,7 @@ export function VideoPlayer() {
       }
     } catch (err) {
       console.error('Live TV stream fetch failed:', err)
-      setVideoError('Failed to load Live TV stream.')
+      setVideoError('Failed to load Live TV stream. Check your network connection.')
       setVideoLoading(false)
     }
   }, [playDirectM3U8, setVideoError, setVideoLoading, hdhrTunerIp])

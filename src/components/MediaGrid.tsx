@@ -107,7 +107,7 @@ function HorizontalShelf({
         <div className="px-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {section.items.map((item, idx) => (
             <MediaCard
-              key={`${section.id}-${item.id}-${idx}`}
+              key={`${section.id}-${item.isJellyfin ? 'jf' : 'local'}-${item.id}`}
               item={item}
               onWatchLater={onWatchLater}
               onRemoveWatchLater={onRemoveWatchLater}
@@ -350,7 +350,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {genreItems.map((item, idx) => (
                 <MediaCard
-                  key={`${item.id}-${idx}`}
+                  key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}`}
                   item={item}
                   onWatchLater={onWatchLater}
                   onRemoveWatchLater={onRemoveWatchLater}
@@ -382,7 +382,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {items.map((item, idx) => (
                 <MediaCard
-                  key={`${item.id}-${idx}`}
+                  key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}`}
                   item={item}
                   onWatchLater={onWatchLater}
                   onRemoveWatchLater={onRemoveWatchLater}

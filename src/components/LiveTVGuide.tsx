@@ -474,6 +474,7 @@ function ChannelCard({
         isSelected ? 'border-primary/40 bg-primary/5' : 'border-border/30 bg-card/50',
       )}
       onClick={() => onSelect(channel)}
+      onDoubleClick={() => onPlay(channel)}
     >
       {/* Channel Visual */}
       <div className="relative aspect-video bg-gradient-to-br from-muted/50 to-muted/20 flex items-center justify-center overflow-hidden">

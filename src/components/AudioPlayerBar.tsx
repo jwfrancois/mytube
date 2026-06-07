@@ -245,6 +245,16 @@ export function AudioPlayerBar() {
   useEffect(() => {
     const el = audioRef.current
     if (!el || !audioTrack) return
+
+    // Skip if we're in the middle of a track change — loadAndPlay already
+    // handles play/pause for new tracks.  We detect a track change by
+    // checking if the currentSrcIdRef matches the audioTrack.
+    const trackId = getTrackId(audioTrack)
+    if (currentSrcIdRef.current !== trackId) {
+      // Track is changing — loadAndPlay will handle it
+      return
+    }
+
     if (isPlaying) {
       // Only play if not already playing (avoid interrupting a playing track)
       if (el.paused) {
@@ -253,7 +263,7 @@ export function AudioPlayerBar() {
     } else {
       el.pause()
     }
-  }, [isPlaying])
+  }, [isPlaying, audioTrack, getTrackId])
 
   // Volume sync
   useEffect(() => {
