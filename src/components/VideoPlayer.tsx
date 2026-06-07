@@ -882,6 +882,7 @@ export function VideoPlayer() {
     setVolume,
     playbackSpeed,
     setPlaybackSpeed,
+    hdhrTunerIp,
   } = useAppStore()
 
   const [liked, setLiked] = useState(false)
@@ -946,7 +947,13 @@ export function VideoPlayer() {
   // Handle Live TV stream — fetches the stream API and plays the result
   const handleLiveTVStream = useCallback(async (channelId: string) => {
     try {
-      const streamUrl = `/api/livetv/stream/${encodeURIComponent(channelId)}`
+      // For HDHomerun channels, pass the tuner IP from the store so the server
+      // can build the correct stream URL even if it couldn't discover the tuner
+      const params = new URLSearchParams()
+      if (channelId.startsWith('hdhr-') && hdhrTunerIp) {
+        params.set('tunerIp', hdhrTunerIp)
+      }
+      const streamUrl = `/api/livetv/stream/${encodeURIComponent(channelId)}${params.toString() ? '?' + params.toString() : ''}`
       const res = await fetch(streamUrl)
 
       const contentType = res.headers.get('content-type') || ''
@@ -974,7 +981,7 @@ export function VideoPlayer() {
       setVideoError('Failed to load Live TV stream.')
       setVideoLoading(false)
     }
-  }, [playDirectM3U8, setVideoError, setVideoLoading])
+  }, [playDirectM3U8, setVideoError, setVideoLoading, hdhrTunerIp])
 
   // Sync video element volume/speed with shared store state
   useEffect(() => {

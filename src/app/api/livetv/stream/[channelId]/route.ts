@@ -10,11 +10,12 @@ export async function GET(
     const { channelId } = await params
     const { searchParams } = new URL(request.url)
     const format = searchParams.get('format') || 'm3u8' // 'm3u8' | 'direct'
+    const tunerIp = searchParams.get('tunerIp') || '' // Client-provided tuner IP (when server can't reach local network)
 
     // Check if it's an HDHomerun channel
     if (channelId.startsWith('hdhr-')) {
       const channelNumber = channelId.replace('hdhr-', '')
-      return handleHDHomerunStream(channelNumber, format)
+      return handleHDHomerunStream(channelNumber, format, tunerIp)
     }
 
     // Check if it's a Jellyfin live TV channel
@@ -171,29 +172,47 @@ function buildProxyUrl(targetUrl: string): string {
  * Handle HDHomerun stream requests.
  * HDHomerun delivers MPEG-TS which needs to be transcoded to HLS for browser playback.
  * We return a JSON response pointing to our transcoding mini-service running on port 3010.
+ * 
+ * The tunerIp can come from:
+ * 1. The database (if the server could discover the tuner)
+ * 2. The HDHOMERUN_IP env var
+ * 3. The client-provided tunerIp query parameter (when the server can't reach the local network)
  */
-async function handleHDHomerunStream(channelNumber: string, format: string): Promise<NextResponse> {
+async function handleHDHomerunStream(channelNumber: string, format: string, clientTunerIp: string = ''): Promise<NextResponse> {
   try {
-    // Look for any registered tuner (even if not currently connected — might be reachable from transcoder)
-    const tuner = await db.hDHomerunTuner.findFirst({
-      orderBy: { connected: 'desc' },
-    })
+    // Try to find the tuner IP from multiple sources
+    let tunerIp = clientTunerIp
+    
+    // If no client-provided IP, check the database
+    if (!tunerIp) {
+      const tuner = await db.hDHomerunTuner.findFirst({
+        orderBy: { connected: 'desc' },
+      })
+      if (tuner) {
+        tunerIp = tuner.tunerIp
+      }
+    }
+    
+    // If still no IP, check the env var
+    if (!tunerIp) {
+      tunerIp = process.env.HDHOMERUN_IP || ''
+    }
 
-    if (!tuner) {
+    if (!tunerIp) {
       return NextResponse.json(
-        { error: 'No HDHomerun tuner registered. Please add one in Settings.' },
+        { error: 'No HDHomerun tuner found. Please add one in Settings or ensure NEXT_PUBLIC_HDHOMERUN_IP is set.' },
         { status: 400 }
       )
     }
 
     // Build the raw MPEG-TS stream URL from the HDHomerun device
-    const rawStreamUrl = `http://${tuner.tunerIp}:5004/auto/v${channelNumber}`
+    const rawStreamUrl = `http://${tunerIp}:5004/auto/v${channelNumber}`
 
     if (format === 'm3u8') {
       // The transcoding mini-service runs on port 3010 and converts
       // MPEG-TS to HLS segments on the fly.
       // Pass tunerIp so the transcoder can start FFmpeg if not already running.
-      const transcoderM3u8Url = `http://localhost:3010/stream/${channelNumber}/index.m3u8?tunerIp=${tuner.tunerIp}`
+      const transcoderM3u8Url = `http://localhost:3010/stream/${channelNumber}/index.m3u8?tunerIp=${tunerIp}`
       const hlsUrl = `/api/livetv/proxy-segment?url=${encodeURIComponent(transcoderM3u8Url)}`
 
       return NextResponse.json({
@@ -202,12 +221,7 @@ async function handleHDHomerunStream(channelNumber: string, format: string): Pro
         channelId: `hdhr-${channelNumber}`,
         source: 'hdhomerun',
         rawStreamUrl,
-        tuner: {
-          id: tuner.id,
-          name: tuner.name,
-          tunerIp: tuner.tunerIp,
-          connected: tuner.connected,
-        },
+        tunerIp,
       })
     }
 

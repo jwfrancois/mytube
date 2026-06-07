@@ -19,6 +19,7 @@ import { LivingHomeScreen } from '@/components/LivingHomeScreen'
 import { MediaKnowledgeGraph } from '@/components/MediaKnowledgeGraph'
 import { LiveTVSection } from '@/components/LiveTVSection'
 import { LiveTVGuide } from '@/components/LiveTVGuide'
+import { getHDHomerunIp, discoverHDHomerun, setHDHomerunIp } from '@/lib/hdhomerun-client'
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
 import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers, Radio } from 'lucide-react'
@@ -141,6 +142,8 @@ export default function Home() {
   }, [setJellyfinConnected, setJellyfinServer])
 
   // Auto-connect HDHomerun tuner on mount
+  // Try server-side auto-connect first, then fall back to client-side discovery
+  // (server can't reach local network devices, but the user's browser can)
   const hdhrAutoConnectRef = useRef(false)
 
   useEffect(() => {
@@ -148,6 +151,7 @@ export default function Home() {
     hdhrAutoConnectRef.current = true
 
     const autoConnectHDHR = async () => {
+      // Step 1: Try server-side auto-connect (works if server is on the same network)
       try {
         const res = await fetch('/api/hdhomerun/auto-connect', {
           method: 'POST',
@@ -158,10 +162,29 @@ export default function Home() {
           if (data.success && data.tuner) {
             setHdhrConnected(true)
             setHdhrTunerIp(data.tuner.tunerIp)
+            return // Server connected successfully
           }
         }
       } catch (err) {
-        console.error('HDHomerun auto-connect failed:', err)
+        console.warn('Server-side HDHomerun auto-connect failed:', err)
+      }
+
+      // Step 2: Server couldn't connect — try client-side discovery
+      // The user's browser IS on the local network and CAN reach the HDHomerun
+      const hdhrIp = getHDHomerunIp()
+      if (hdhrIp) {
+        try {
+          const deviceInfo = await discoverHDHomerun(hdhrIp)
+          if (deviceInfo) {
+            setHdhrConnected(true)
+            setHdhrTunerIp(hdhrIp)
+            // Persist the IP for future sessions
+            setHDHomerunIp(hdhrIp)
+            console.log('[MyTube] HDHomerun discovered via client-side at', hdhrIp, deviceInfo.ModelName || deviceInfo.Model)
+          }
+        } catch (err) {
+          console.warn('Client-side HDHomerun discovery failed:', err)
+        }
       }
     }
     autoConnectHDHR()

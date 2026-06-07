@@ -31,6 +31,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import { toast } from '@/hooks/use-toast'
+import { getHDHomerunIp, discoverHDHomerun, fetchHDHomerunLineup, setHDHomerunIp } from '@/lib/hdhomerun-client'
 
 interface HDHomerunTuner {
   id: string
@@ -45,7 +46,7 @@ interface HDHomerunTuner {
 }
 
 export function SettingsDialog() {
-  const { settingsOpen, setSettingsOpen, jellyfinConnected, setJellyfinConnected, jellyfinServer, setJellyfinServer } = useAppStore()
+  const { settingsOpen, setSettingsOpen, jellyfinConnected, setJellyfinConnected, jellyfinServer, setJellyfinServer, setHdhrConnected, setHdhrTunerIp: setStoreHdhrTunerIp } = useAppStore()
   const [serverUrl, setServerUrl] = useState('https://manitou.dyabavadra.com')
   const [username, setUsername] = useState('dyabavadra')
   const [password, setPassword] = useState('bonjour66')
@@ -153,6 +154,35 @@ export function SettingsDialog() {
 
     setHdhrConnecting(true)
     try {
+      // Step 1: Try client-side discovery first (browser can reach local network)
+      const deviceInfo = await discoverHDHomerun(hdhrTunerIp)
+      if (deviceInfo) {
+        // Client-side discovery succeeded — save the IP and mark as connected
+        setHDHomerunIp(hdhrTunerIp)
+        setHdhrConnected(true)
+        setStoreHdhrTunerIp(hdhrTunerIp)
+        
+        // Also try server-side registration (best effort)
+        fetch('/api/hdhomerun/discover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tunerIp: hdhrTunerIp }),
+        }).catch(() => {}) // Non-critical — server may not be able to reach the device
+
+        toast({
+          title: 'HDHomerun Connected!',
+          description: `${deviceInfo.ModelName || deviceInfo.Model || 'HDHomeRun'} at ${hdhrTunerIp} (${deviceInfo.TunerCount || 2} tuners)`,
+        })
+
+        // Refresh tuner list and check channels
+        await fetchHDHomerunTuners()
+        // Fetch channel count client-side
+        const channels = await fetchHDHomerunLineup(hdhrTunerIp)
+        setHdhrChannelCount(channels.length)
+        return
+      }
+
+      // Step 2: Client-side failed, try server-side as fallback
       const res = await fetch('/api/hdhomerun/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -164,11 +194,15 @@ export function SettingsDialog() {
       if (!res.ok) {
         toast({
           title: 'HDHomerun Connection Failed',
-          description: data.error || 'Could not connect to the tuner',
+          description: data.error || 'Could not connect to the tuner. Make sure the IP is correct and the device is on the same network.',
           variant: 'destructive',
         })
         return
       }
+
+      setHdhrConnected(true)
+      setStoreHdhrTunerIp(hdhrTunerIp)
+      setHDHomerunIp(hdhrTunerIp)
 
       toast({
         title: 'HDHomerun Connected!',
@@ -181,7 +215,7 @@ export function SettingsDialog() {
     } catch {
       toast({
         title: 'Connection failed',
-        description: 'Could not reach the HDHomerun device',
+        description: 'Could not reach the HDHomerun device. Make sure the IP is correct and you are on the same network.',
         variant: 'destructive',
       })
     } finally {

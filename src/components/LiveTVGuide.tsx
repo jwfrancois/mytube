@@ -40,6 +40,7 @@ import {
   EXTERNAL_SERVICES,
   LiveTVCategoryInfo,
 } from '@/lib/livetv-channels'
+import { getHDHomerunIp, fetchHDHomerunLineup, setHDHomerunIp } from '@/lib/hdhomerun-client'
 
 // Map category icons
 const categoryIconMap: Record<string, React.ElementType> = {
@@ -71,6 +72,7 @@ export function LiveTVGuide({ onPlay, onBack }: LiveTVGuideProps) {
   const [selectedChannel, setSelectedChannel] = useState<LiveTVChannel | null>(null)
   const [epgData, setEpgData] = useState<any[]>([])
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const { setHdhrConnected, setHdhrTunerIp } = useAppStore()
 
   // Load favorites from localStorage
   useEffect(() => {
@@ -95,7 +97,35 @@ export function LiveTVGuide({ onPlay, onBack }: LiveTVGuideProps) {
         const res = await fetch('/api/livetv/channels?includeJellyfin=true')
         if (res.ok) {
           const data = await res.json()
-          setChannels(data.channels || [])
+          let allChannels = data.channels || []
+          
+          // If the server-side response doesn't include HDHomerun channels,
+          // fetch them directly from the browser (which IS on the local network)
+          const hasHDHomerunChannels = allChannels.some((ch: LiveTVChannel) => ch.source === 'hdhomerun')
+          if (!hasHDHomerunChannels) {
+            const hdhrIp = getHDHomerunIp()
+            if (hdhrIp) {
+              try {
+                const hdhrChannels = await fetchHDHomerunLineup(hdhrIp)
+                if (hdhrChannels.length > 0) {
+                  setHdhrTunerIp(hdhrIp)
+                  setHdhrConnected(true)
+                  allChannels = [...allChannels, ...hdhrChannels]
+                }
+              } catch {
+                // HDHomerun not reachable from browser either
+              }
+            }
+          } else {
+            // HDHomerun channels already present from server — update store
+            const hdhrChannel = allChannels.find((ch: LiveTVChannel) => ch.source === 'hdhomerun')
+            if (hdhrChannel && hdhrChannel.tunerIp) {
+              setHdhrTunerIp(hdhrChannel.tunerIp)
+              setHdhrConnected(true)
+            }
+          }
+          
+          setChannels(allChannels)
         }
       } catch (err) {
         console.error('Failed to fetch Live TV channels:', err)
@@ -104,7 +134,7 @@ export function LiveTVGuide({ onPlay, onBack }: LiveTVGuideProps) {
       }
     }
     fetchChannels()
-  }, [])
+  }, [setHdhrConnected, setHdhrTunerIp])
 
   // Fetch EPG for selected channel
   useEffect(() => {

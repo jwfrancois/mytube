@@ -974,3 +974,28 @@ Stage Summary:
   - Full tuner management in Settings (connect, disconnect, scan channels)
   - Channels appear in Live TV section with OTA badges
   - User's specific tuner (10.0.0.187, HDHR4-2US) registered in database
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix HDHomerun channels not showing - fetch lineup client-side since server cannot reach local network IPs
+
+Work Log:
+- Diagnosed root cause: Next.js server runs in cloud sandbox and cannot reach HDHomerun at 10.0.0.187 (local network IP)
+- Added NEXT_PUBLIC_HDHOMERUN_IP env var to .env.local so client-side code can access the IP
+- Created /src/lib/hdhomerun-client.ts with client-side functions: getHDHomerunIp(), setHDHomerunIp(), discoverHDHomerun(), fetchHDHomerunLineup()
+- Updated LiveTVSection.tsx to fetch HDHomerun channels client-side when server-side channels are missing
+- Updated LiveTVGuide.tsx with same client-side HDHomerun channel fetching
+- Updated VideoPlayer.tsx handleLiveTVStream to pass tunerIp query parameter for HDHomerun streams
+- Updated /api/livetv/stream/[channelId]/route.ts to accept tunerIp from client and fall back to env var
+- Updated page.tsx auto-connect to try client-side HDHomerun discovery when server-side fails
+- Updated SettingsDialog.tsx to try client-side HDHomerun discovery first, then server-side as fallback
+- Fixed naming conflict between local useState setHdhrTunerIp and store setHdhrTunerIp in SettingsDialog
+- Updated .env.example with NEXT_PUBLIC_HDHOMERUN_IP documentation
+- ESLint passes clean with no errors
+
+Stage Summary:
+- HDHomerun channels will now be fetched directly from the browser (which IS on the local network) when the server cannot reach the device
+- The tuner IP is stored in localStorage and the NEXT_PUBLIC_HDHOMERUN_IP env var
+- Stream endpoint accepts tunerIp from client to work around server network limitations
+- All code compiles and the dev server starts successfully with 200 OK responses
+
