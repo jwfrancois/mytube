@@ -186,6 +186,12 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
     return () => cancelAnimationFrame(raf)
   }, [])
 
+  // Safety filter: when a specific category is selected, only show items matching that type.
+  // This prevents Jellyfin items of wrong types from leaking into the wrong category page.
+  const filteredItems = activeCategory !== 'ALL' && activeCategory !== 'JELLYFIN' && activeCategory !== 'LIVETV'
+    ? items.filter(item => item.type === activeCategory)
+    : items
+
   const categoryTitle: Record<MediaType, string> = {
     ALL: 'Home',
     MOVIE: 'Movies',
@@ -195,6 +201,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
     AUDIOBOOK: 'Audiobooks',
     COLLECTION: 'Collections',
     JELLYFIN: 'Jellyfin NAS',
+    LIVETV: 'Live TV',
   }
 
   if (isLoading) {
@@ -311,7 +318,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
   // Fallback: Group by genre for "ALL" category or flat grid
   const genreGroups: Record<string, any[]> = {}
   if (activeCategory === 'ALL') {
-    items.forEach((item) => {
+    filteredItems.forEach((item) => {
       const genre = item.genre || 'Other'
       if (!genreGroups[genre]) genreGroups[genre] = []
       genreGroups[genre].push(item)
@@ -348,7 +355,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
           <section key={genre} className="mb-8">
             <h2 className="text-lg font-semibold mb-3">{genre}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {genreItems.map((item, idx) => (
+              {genreItems.map((item) => (
                 <MediaCard
                   key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}`}
                   item={item}
@@ -363,7 +370,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
         ))
       ) : (
         <>
-          {items.length === 0 ? (
+          {filteredItems.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
               <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-4 opacity-20">
                 <rect width="18" height="18" x="3" y="3" rx="2" />
@@ -380,7 +387,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {items.map((item, idx) => (
+              {filteredItems.map((item) => (
                 <MediaCard
                   key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}`}
                   item={item}

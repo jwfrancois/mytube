@@ -10,6 +10,10 @@ import { NextRequest, NextResponse } from 'next/server'
  * For m3u8 playlists, rewrites segment URLs to also go through this proxy.
  * For .ts segments and other media, proxies the binary data directly.
  */
+
+// Allow larger response bodies for video segments
+export const maxDuration = 60
+
 export async function GET(request: NextRequest) {
   try {
     const server = await db.jellyfinServer.findFirst()
@@ -77,27 +81,32 @@ export async function GET(request: NextRequest) {
     }
 
     // For .ts segments and other media, proxy the binary data directly
-    const body = res.body
-    const responseHeaders: Record<string, string> = {
-      'Content-Type': contentType || 'video/mp2t',
-      'Cache-Control': 'public, max-age=3600',
-      'Access-Control-Allow-Origin': '*',
-    }
+    try {
+      const body = res.body
+      const responseHeaders: Record<string, string> = {
+        'Content-Type': contentType || 'video/mp2t',
+        'Cache-Control': 'public, max-age=3600',
+        'Access-Control-Allow-Origin': '*',
+      }
 
-    const contentLength = res.headers.get('content-length')
-    if (contentLength) {
-      responseHeaders['Content-Length'] = contentLength
-    }
+      const contentLength = res.headers.get('content-length')
+      if (contentLength) {
+        responseHeaders['Content-Length'] = contentLength
+      }
 
-    const contentRange = res.headers.get('content-range')
-    if (contentRange) {
-      responseHeaders['Content-Range'] = contentRange
-    }
+      const contentRange = res.headers.get('content-range')
+      if (contentRange) {
+        responseHeaders['Content-Range'] = contentRange
+      }
 
-    return new NextResponse(body, {
-      status: res.status === 206 ? 206 : 200,
-      headers: responseHeaders,
-    })
+      return new NextResponse(body, {
+        status: res.status === 206 ? 206 : 200,
+        headers: responseHeaders,
+      })
+    } catch (streamErr) {
+      console.error('[HLS Proxy] Error streaming segment:', streamErr)
+      return NextResponse.json({ error: 'Failed to stream segment' }, { status: 500 })
+    }
   } catch (error) {
     console.error('HLS proxy error:', error)
     return NextResponse.json({ error: 'HLS proxy failed' }, { status: 500 })

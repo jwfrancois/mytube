@@ -44,8 +44,9 @@ export async function GET(request: NextRequest) {
       try {
         const server = await db.jellyfinServer.findFirst()
         if (server && server.connected) {
-          // Fetch all categories with reduced concurrency (3 at a time instead of 6)
-          const types = ['MOVIE', 'TV_SHOW', 'MUSIC', 'PODCAST', 'AUDIOBOOK', 'COLLECTION']
+          // When a specific type is requested, only fetch that type from Jellyfin.
+          // Otherwise (ALL), fetch all categories.
+          const types = type ? [type] : ['MOVIE', 'TV_SHOW', 'MUSIC', 'PODCAST', 'AUDIOBOOK', 'COLLECTION']
           
           // Process in batches of 2 to reduce memory pressure
           for (let i = 0; i < types.length; i += 2) {

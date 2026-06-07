@@ -98,12 +98,27 @@ export function LiveTVGuide({ onPlay, onBack }: LiveTVGuideProps) {
         if (res.ok) {
           const data = await res.json()
           let allChannels = data.channels || []
-          
-          // If the server-side response doesn't include HDHomerun channels,
-          // fetch them directly from the browser (which IS on the local network)
-          const hasHDHomerunChannels = allChannels.some((ch: LiveTVChannel) => ch.source === 'hdhomerun')
-          if (!hasHDHomerunChannels) {
-            const hdhrIp = getHDHomerunIp()
+
+          // Try server-side HDHomerun channels first (avoids CORS issues)
+          let hdhrChannelsFound = false
+          try {
+            const hdhrRes = await fetch('/api/hdhomerun/channels')
+            if (hdhrRes.ok) {
+              const hdhrData = await hdhrRes.json()
+              if (hdhrData.channels && hdhrData.channels.length > 0) {
+                hdhrChannelsFound = true
+                setHdhrConnected(true)
+                if (hdhrData.tuner?.tunerIp) setHdhrTunerIp(hdhrData.tuner.tunerIp)
+                allChannels = [...allChannels, ...hdhrData.channels]
+              }
+            }
+          } catch {
+            // Server-side HDHomerun fetch failed
+          }
+
+          // Fallback: client-side fetch (for when server can't reach local network)
+          if (!hdhrChannelsFound) {
+            const hdhrIp = data.hdhrTunerIp || getHDHomerunIp()
             if (hdhrIp) {
               try {
                 const hdhrChannels = await fetchHDHomerunLineup(hdhrIp)
@@ -116,15 +131,8 @@ export function LiveTVGuide({ onPlay, onBack }: LiveTVGuideProps) {
                 // HDHomerun not reachable from browser either
               }
             }
-          } else {
-            // HDHomerun channels already present from server — update store
-            const hdhrChannel = allChannels.find((ch: LiveTVChannel) => ch.source === 'hdhomerun')
-            if (hdhrChannel && hdhrChannel.tunerIp) {
-              setHdhrTunerIp(hdhrChannel.tunerIp)
-              setHdhrConnected(true)
-            }
           }
-          
+
           setChannels(allChannels)
         }
       } catch (err) {

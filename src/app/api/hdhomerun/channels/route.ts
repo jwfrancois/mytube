@@ -3,38 +3,76 @@ import { db } from '@/lib/db'
 
 /**
  * GET /api/hdhomerun/channels
- * Fetch the channel lineup from a connected HDHomerun tuner.
+ * Fetch the channel lineup from an HDHomerun tuner.
+ * Tries connected tuners first, then falls back to any known tuner with an IP.
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const tunerId = searchParams.get('tunerId')
+    const tunerIp = searchParams.get('tunerIp')
 
-    // Find the tuner
-    const where = tunerId ? { id: tunerId } : { connected: true }
-    const tuner = await db.hDHomerunTuner.findFirst({ where })
+    // Find the tuner — try connected first, then any tuner with an IP
+    let tuner = null
+    if (tunerId) {
+      tuner = await db.hDHomerunTuner.findFirst({ where: { id: tunerId } })
+    } else {
+      tuner = await db.hDHomerunTuner.findFirst({ where: { connected: true } })
+      if (!tuner) {
+        // No connected tuner — try any tuner that has an IP address
+        tuner = await db.hDHomerunTuner.findFirst({
+          where: { tunerIp: { not: '' } },
+          orderBy: { updatedAt: 'desc' },
+        })
+      }
+    }
+
+    // Allow overriding with explicit IP parameter
+    if (!tuner && tunerIp) {
+      tuner = { id: 'manual', name: 'HDHomeRun', tunerIp, tunerCount: 2, model: '', firmware: '', deviceId: '', connected: false }
+    }
 
     if (!tuner) {
       return NextResponse.json(
-        { error: 'No connected HDHomerun tuner found. Please add one in Settings.' },
+        { error: 'No HDHomerun tuner found. Please add one in Settings.' },
         { status: 404 }
       )
     }
 
-    if (!tuner.connected) {
-      return NextResponse.json(
-        { error: 'HDHomerun tuner is not connected' },
-        { status: 400 }
-      )
-    }
-
-    // Fetch the channel lineup
+    // Fetch the channel lineup — try /lineup.html first (user-specified), then /lineup.json
     try {
-      const lineupUrl = `http://${tuner.tunerIp}/lineup.json`
-      const res = await fetch(lineupUrl, {
-        signal: AbortSignal.timeout(15000),
-        headers: { 'User-Agent': 'MyTube/1.0' },
-      })
+      let lineupRes: Response | null = null
+
+      // Try /lineup.html first (the HDHomerun serves JSON on this endpoint too
+      // when Accept: application/json is sent)
+      try {
+        const htmlUrl = `http://${tuner.tunerIp}/lineup.html`
+        lineupRes = await fetch(htmlUrl, {
+          signal: AbortSignal.timeout(15000),
+          headers: {
+            'User-Agent': 'MyTube/1.0',
+            'Accept': 'application/json',
+          },
+        })
+        // If /lineup.html didn't return JSON, try /lineup.json
+        const ct = lineupRes.headers.get('content-type') || ''
+        if (!lineupRes.ok || !ct.includes('json')) {
+          lineupRes = null
+        }
+      } catch {
+        lineupRes = null
+      }
+
+      // Fallback to /lineup.json
+      if (!lineupRes) {
+        const jsonUrl = `http://${tuner.tunerIp}/lineup.json`
+        lineupRes = await fetch(jsonUrl, {
+          signal: AbortSignal.timeout(15000),
+          headers: { 'User-Agent': 'MyTube/1.0' },
+        })
+      }
+
+      const res = lineupRes
 
       if (!res.ok) {
         return NextResponse.json(
@@ -68,6 +106,16 @@ export async function GET(request: NextRequest) {
         const numB = parseFloat(b.guideNumber)
         return numA - numB
       })
+
+      // Mark the tuner as connected if it wasn't already
+      if (!tuner.connected && tuner.id !== 'manual') {
+        try {
+          await db.hDHomerunTuner.update({
+            where: { id: tuner.id },
+            data: { connected: true, lastConnected: new Date().toISOString() },
+          })
+        } catch {}
+      }
 
       return NextResponse.json({
         channels,

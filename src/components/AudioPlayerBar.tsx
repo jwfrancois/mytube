@@ -151,6 +151,11 @@ export function AudioPlayerBar() {
   // (comparing el.src with a relative URL is unreliable because el.src is resolved to absolute)
   const currentSrcIdRef = useRef<string | null>(null)
 
+  // Guard against double-play: when both the track-change effect and the
+  // play/pause-sync effect fire at the same time, we only want loadAndPlay
+  // to handle playback — the play/pause effect should skip.
+  const trackChangeInProgressRef = useRef(false)
+
   // Determine if we should show the bar
   const showBar = !!audioTrack
 
@@ -236,9 +241,16 @@ export function AudioPlayerBar() {
   useEffect(() => {
     if (!audioTrack) {
       currentSrcIdRef.current = null
+      trackChangeInProgressRef.current = false
       return
     }
+    // Mark that a track change is in progress — the play/pause sync effect
+    // should not interfere while loadAndPlay is handling the new track.
+    trackChangeInProgressRef.current = true
     loadAndPlay(audioTrack, isPlaying)
+    // Clear the guard after a short delay (enough for loadAndPlay to start)
+    const timer = setTimeout(() => { trackChangeInProgressRef.current = false }, 500)
+    return () => clearTimeout(timer)
   }, [audioTrack, isPlaying, loadAndPlay])
 
   // Play/pause sync (when isPlaying changes without track change)
@@ -246,9 +258,11 @@ export function AudioPlayerBar() {
     const el = audioRef.current
     if (!el || !audioTrack) return
 
-    // Skip if we're in the middle of a track change — loadAndPlay already
-    // handles play/pause for new tracks.  We detect a track change by
-    // checking if the currentSrcIdRef matches the audioTrack.
+    // Skip if a track change is in progress — loadAndPlay already
+    // handles play/pause for new tracks.
+    if (trackChangeInProgressRef.current) return
+
+    // Also skip if the track hasn't been loaded yet by loadAndPlay
     const trackId = getTrackId(audioTrack)
     if (currentSrcIdRef.current !== trackId) {
       // Track is changing — loadAndPlay will handle it

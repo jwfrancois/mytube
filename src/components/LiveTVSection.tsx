@@ -55,40 +55,56 @@ export function LiveTVSection({ onPlay, onViewAll }: LiveTVSectionProps) {
         if (res.ok) {
           const data = await res.json()
           let allChannels: LiveTVChannel[] = data.channels || []
-          
-          // HDHomerun channels are always fetched client-side because the server
-          // may be in the cloud and unable to reach local network devices.
-          // The server provides the tuner IP (from DB or env), or we fall back to
-          // the client-side stored/env IP.
-          const hdhrIp = data.hdhrTunerIp || getHDHomerunIp()
-          if (hdhrIp) {
-            try {
-              const hdhrChannels = await fetchHDHomerunLineup(hdhrIp)
-              if (hdhrChannels.length > 0) {
-                setHdhrTunerIp(hdhrIp)
+
+          // Try server-side HDHomerun channels first (avoids CORS issues)
+          let hdhrChannelsFound = false
+          try {
+            const hdhrRes = await fetch('/api/hdhomerun/channels')
+            if (hdhrRes.ok) {
+              const hdhrData = await hdhrRes.json()
+              if (hdhrData.channels && hdhrData.channels.length > 0) {
+                hdhrChannelsFound = true
                 setHdhrConnected(true)
-                // Convert ParsedHDHomerunChannel to LiveTVChannel format
-                const liveTVChannels: LiveTVChannel[] = hdhrChannels.map(ch => ({
-                  id: ch.id,
-                  name: ch.name,
-                  category: ch.category,
-                  streamUrl: ch.streamUrl,
-                  logoUrl: ch.logoUrl,
-                  description: ch.description,
-                  source: ch.source,
-                  language: ch.language,
-                  country: ch.country,
-                  guideNumber: ch.guideNumber,
-                  hd: ch.hd,
-                  tunerIp: ch.tunerIp,
-                }))
-                allChannels = [...allChannels, ...liveTVChannels]
+                if (hdhrData.tuner?.tunerIp) setHdhrTunerIp(hdhrData.tuner.tunerIp)
+                allChannels = [...allChannels, ...hdhrData.channels]
               }
-            } catch {
-              // HDHomerun not reachable from browser either
+            }
+          } catch {
+            // Server-side HDHomerun fetch failed
+          }
+
+          // Fallback: try client-side fetch (for when server is in the cloud
+          // and can't reach local network devices)
+          if (!hdhrChannelsFound) {
+            const hdhrIp = data.hdhrTunerIp || getHDHomerunIp()
+            if (hdhrIp) {
+              try {
+                const hdhrChannels = await fetchHDHomerunLineup(hdhrIp)
+                if (hdhrChannels.length > 0) {
+                  setHdhrTunerIp(hdhrIp)
+                  setHdhrConnected(true)
+                  const liveTVChannels: LiveTVChannel[] = hdhrChannels.map(ch => ({
+                    id: ch.id,
+                    name: ch.name,
+                    category: ch.category,
+                    streamUrl: ch.streamUrl,
+                    logoUrl: ch.logoUrl,
+                    description: ch.description,
+                    source: ch.source,
+                    language: ch.language,
+                    country: ch.country,
+                    guideNumber: ch.guideNumber,
+                    hd: ch.hd,
+                    tunerIp: ch.tunerIp,
+                  }))
+                  allChannels = [...allChannels, ...liveTVChannels]
+                }
+              } catch {
+                // HDHomerun not reachable from browser either
+              }
             }
           }
-          
+
           setChannels(allChannels)
         }
       } catch (err) {
