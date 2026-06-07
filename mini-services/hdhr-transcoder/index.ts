@@ -403,6 +403,18 @@ const server = Bun.serve({
         return await handleSegment(segMatch[1], segMatch[2]);
       }
 
+      // ── GET /stream/:channel/segment_NNN.ts ──────────────────────
+      // FFmpeg writes relative segment paths (e.g. "segment_000.ts") in the
+      // m3u8.  When the proxy-segment endpoint resolves them against the
+      // m3u8 base URL, the resulting path is /stream/{ch}/segment_000.ts
+      // rather than /stream/{ch}/segment/segment_000.ts.  Handle both.
+      const directSegMatch = path.match(
+        /^\/stream\/([\d.]+)\/(segment_\d+\.ts)$/
+      );
+      if (directSegMatch && method === "GET") {
+        return await handleSegment(directSegMatch[1], directSegMatch[2]);
+      }
+
       // ── GET /status ─────────────────────────────────────────────
       if (path === "/status" && method === "GET") {
         return handleStatus();
