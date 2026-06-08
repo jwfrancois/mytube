@@ -144,3 +144,30 @@ Stage Summary:
 - AI features work when Jellyfin is connected (they depend on Jellyfin data)
 - Vercel deployment requires user to set JELLYFIN_ACCESS_TOKEN env var
 - Pushed 3 commits to GitHub: auth fix, UI improvements, build config fix
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix media categories not populating and hero not showing on Vercel deployment
+
+Work Log:
+- Identified root cause: /api/media route was making internal HTTP self-fetches to /api/jellyfin/category, which fails on Vercel serverless (cold start chains, timeout failures)
+- Created shared library src/lib/jellyfin-category.ts with fetchJellyfinCategoryItems() and fetchAllJellyfinItems()
+- Rewrote /api/media/route.ts to call shared library directly (no more HTTP self-fetch)
+- Rewrote /api/jellyfin/category/route.ts as thin wrapper around shared function
+- Fixed LivingHomeScreen always showing on home page (even in fallback view)
+- Added fallback hero when connected but no items loaded yet
+- Fixed setActiveCategory to not clear mediaItems (prevents flash of "No content found")
+- Updated MediaGrid to always show preBanner on home page in both sections and fallback views
+- Better empty state messaging for category pages
+- Verified locally: 120 Jellyfin items across all 6 categories load correctly
+- Verified Movies, TV Shows, Music category pages all display content properly
+- Verified home page shows hero banner, LivingHomeScreen, and all sections
+- Pushed to GitHub for Vercel deployment
+
+Stage Summary:
+- Created src/lib/jellyfin-category.ts (shared Jellyfin fetching logic)
+- Fixed /api/media to call Jellyfin API directly instead of self-fetch
+- Fixed hero/LivingHomeScreen always visible on home page
+- Fixed category pages showing content from Jellyfin NAS
+- All changes tested locally and pushed to GitHub
