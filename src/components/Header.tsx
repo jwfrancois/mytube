@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Search, Upload, Menu, Bell, User, Server } from 'lucide-react'
+import { Search, Upload, Menu, Bell, User, Server, Wifi, WifiOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface HeaderProps {
@@ -12,7 +12,7 @@ interface HeaderProps {
 }
 
 export function Header({ onSearch }: HeaderProps) {
-  const { searchQuery, setSearchQuery, toggleSidebar, setAddDialogOpen, jellyfinConnected } = useAppStore()
+  const { searchQuery, setSearchQuery, toggleSidebar, setAddDialogOpen, jellyfinConnected, setActiveCategory } = useAppStore()
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
@@ -78,20 +78,29 @@ export function Header({ onSearch }: HeaderProps) {
 
       {/* Right: Actions */}
       <div className="flex items-center gap-1.5">
-        {/* Jellyfin connection status */}
-        <div className={cn(
-          "hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors",
-          jellyfinConnected
-            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-            : "bg-muted text-muted-foreground border border-border"
-        )}>
-          <span className={cn(
-            "h-1.5 w-1.5 rounded-full",
-            jellyfinConnected ? "bg-emerald-500 animate-pulse-dot" : "bg-muted-foreground/50"
-          )} />
-          <Server className="h-3 w-3" />
-          <span className="hidden lg:inline">{jellyfinConnected ? 'NAS Connected' : 'Offline'}</span>
-        </div>
+        {/* Jellyfin NAS - prominent clickable button */}
+        <Button
+          variant="ghost"
+          className={cn(
+            "gap-2 h-9 px-3 transition-all duration-200",
+            jellyfinConnected
+              ? "text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/20"
+              : "text-muted-foreground hover:bg-muted border border-border"
+          )}
+          onClick={() => {
+            useAppStore.setState({ currentMedia: null, searchQuery: '', isSearching: false })
+            setActiveCategory('JELLYFIN')
+          }}
+          title={jellyfinConnected ? 'Open Jellyfin NAS' : 'Jellyfin NAS - Not connected'}
+        >
+          <Server className="h-4 w-4" />
+          <span className="hidden sm:inline text-sm font-medium">NAS</span>
+          {jellyfinConnected ? (
+            <Wifi className="h-3 w-3 text-emerald-500" />
+          ) : (
+            <WifiOff className="h-3 w-3 text-muted-foreground/50" />
+          )}
+        </Button>
 
         <Button
           variant="ghost"

@@ -1,5 +1,5 @@
 {
-  "buildCommand": "cp prisma/schema.prod.prisma prisma/schema.prisma && prisma generate && next build",
+  "buildCommand": "cp prisma/schema.prod.prisma prisma/schema.prisma && npx prisma generate && next build",
   "installCommand": "bun install",
   "framework": "nextjs",
   "regions": ["iad1"]
