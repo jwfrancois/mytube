@@ -29,8 +29,8 @@ const JELLYFIN_SERVER_ID = '363ac50118644e63bddcd34c6dc063a9'
  * This is the primary way all API routes should obtain credentials.
  */
 export async function getJellyfinCredentials(): Promise<JellyfinCreds | null> {
+  // Step 1: Try database for existing credentials
   try {
-    // Step 1: Check database for existing credentials
     const server = await db.jellyfinServer.findFirst()
     if (server && server.connected && server.accessToken) {
       return {
@@ -42,14 +42,13 @@ export async function getJellyfinCredentials(): Promise<JellyfinCreds | null> {
         serverId: JELLYFIN_SERVER_ID,
       }
     }
-
-    // Step 2: No credentials in DB — try auto-connect from env vars
-    return await autoConnectFromEnv()
-  } catch (error) {
-    console.error('Error getting Jellyfin credentials:', error)
-    // DB might be unavailable — try env vars as last resort
-    return await autoConnectFromEnv()
+  } catch (dbError) {
+    console.error('DB lookup failed for Jellyfin credentials (will try auto-connect):', dbError)
+    // DB might be unavailable — fall through to auto-connect
   }
+
+  // Step 2: No credentials in DB — try auto-connect from env vars
+  return await autoConnectFromEnv()
 }
 
 /**
@@ -70,7 +69,7 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
     const baseUrl = serverUrl.replace(/\/+$/, '')
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000)
+    const timeoutId = setTimeout(() => controller.abort(), 15000)
 
     const authResponse = await fetch(`${baseUrl}/Users/AuthenticateByName`, {
       method: 'POST',
@@ -96,7 +95,7 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
       return null
     }
 
-    // Save to database for future requests
+    // Save to database for future requests (non-fatal if it fails)
     try {
       await db.jellyfinServer.deleteMany()
       await db.jellyfinServer.create({
@@ -111,8 +110,8 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
         },
       })
     } catch (dbError) {
-      console.error('Failed to save Jellyfin credentials to DB:', dbError)
-      // Continue anyway — we have the credentials in memory for this request
+      console.error('Failed to save Jellyfin credentials to DB (non-fatal):', dbError)
+      // Continue anyway — we have the credentials for this request
     }
 
     return {

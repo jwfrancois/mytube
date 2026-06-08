@@ -10,21 +10,51 @@ export async function GET() {
       return NextResponse.json({ connected: false, server: null })
     }
 
-    // Also check DB for the server record to get the full info
-    const { db } = await import('@/lib/db')
-    const server = await db.jellyfinServer.findFirst()
+    // Try to get server info from Jellyfin for additional details
+    let serverInfo: { serverName: string; version: string; operatingSystem: string } | null = null
+    try {
+      const infoRes = await fetch(`${creds.serverUrl}/System/Info`, {
+        headers: {
+          'X-Emby-Token': creds.accessToken,
+        },
+        signal: AbortSignal.timeout(5000),
+      })
+      if (infoRes.ok) {
+        const info = await infoRes.json()
+        serverInfo = {
+          serverName: info.ServerName || 'Jellyfin',
+          version: info.Version || '',
+          operatingSystem: info.OperatingSystem || '',
+        }
+      }
+    } catch {
+      // Non-critical — server info is just nice to have
+    }
+
+    // Try to get the DB record for the full ID
+    let dbId = 'session'
+    try {
+      const { db } = await import('@/lib/db')
+      const server = await db.jellyfinServer.findFirst()
+      if (server) {
+        dbId = server.id
+      }
+    } catch {
+      // DB unavailable
+    }
 
     return NextResponse.json({
       connected: true,
       server: {
-        id: server?.id || 'auto',
-        name: server?.name || 'My Jellyfin',
+        id: dbId,
+        name: 'My Jellyfin',
         serverUrl: creds.serverUrl,
         username: creds.username,
         connected: true,
-        lastConnected: server?.lastConnected || new Date().toISOString(),
+        lastConnected: new Date().toISOString(),
         serverId: creds.serverId,
       },
+      serverInfo,
     })
   } catch (error) {
     console.error('Jellyfin status error:', error)
