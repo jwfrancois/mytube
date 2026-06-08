@@ -36,7 +36,7 @@ const TYPE_TO_ITEM_TYPES: Record<string, string> = {
   MOVIE: 'Movie',
   TV_SHOW: 'Series',
   MUSIC: 'MusicAlbum,Audio',
-  PODCAST: 'Series,Audio,LiveTvChannel,LiveTvProgram',
+  PODCAST: 'Series,Audio',
   AUDIOBOOK: 'AudioBook,Audio',
   COLLECTION: 'BoxSet',
 }
@@ -254,8 +254,6 @@ function mapJellyfinItem(item: any, requestType: string, collectionType: string,
     if (item.Type === 'Series') type = 'PODCAST'
     else if (item.Type === 'Audio') type = 'PODCAST'
     else if (item.Type === 'MusicAlbum') type = 'PODCAST'
-    else if (item.Type === 'LiveTvChannel') type = 'PODCAST'
-    else if (item.Type === 'LiveTvProgram') type = 'PODCAST'
   } else if (collectionType === 'books') {
     if (item.Type === 'AudioBook') type = 'AUDIOBOOK'
     else if (item.Type === 'Audio') type = 'AUDIOBOOK'

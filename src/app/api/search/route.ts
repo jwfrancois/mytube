@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
         const timeoutId = setTimeout(() => controller.abort(), 10000)
 
         const jellyfinRes = await fetch(
-          `${creds.serverUrl}/Items?UserId=${creds.userId}&SearchTerm=${encodeURIComponent(q)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,MusicAlbum,LiveTvChannel,LiveTvProgram,BoxSet&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=30`,
+          `${creds.serverUrl}/Items?UserId=${creds.userId}&SearchTerm=${encodeURIComponent(q)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,MusicAlbum,BoxSet&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=30`,
           {
             headers: { 'X-Emby-Token': creds.accessToken },
             signal: controller.signal,
@@ -82,9 +82,6 @@ export async function GET(request: NextRequest) {
               } else {
                 itemType = 'MUSIC'
               }
-            }
-            else if (item.Type === 'LiveTvChannel' || item.Type === 'LiveTvProgram') {
-              itemType = 'PODCAST'
             }
             else if (item.Type === 'BoxSet') itemType = 'COLLECTION'
 

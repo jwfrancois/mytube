@@ -17,13 +17,11 @@ import { SemanticDiscovery } from '@/components/SemanticDiscovery'
 import { SmartCollections } from '@/components/SmartCollections'
 import { LivingHomeScreen } from '@/components/LivingHomeScreen'
 import { MediaKnowledgeGraph } from '@/components/MediaKnowledgeGraph'
-import { LiveTVSection } from '@/components/LiveTVSection'
-import { LiveTVGuide } from '@/components/LiveTVGuide'
-import { getHDHomerunIp, discoverHDHomerun, setHDHomerunIp } from '@/lib/hdhomerun-client'
+
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
 import { isAudioType } from '@/lib/media-utils'
-import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers, Radio } from 'lucide-react'
+import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers } from 'lucide-react'
 
 const categoryTitle: Record<string, string> = {
   MOVIE: 'Movies',
@@ -53,11 +51,7 @@ export default function Home() {
     setCurrentMedia,
     showKnowledgeGraph,
     setShowKnowledgeGraph,
-    showLiveTV,
-    setShowLiveTV,
-    hdhrConnected,
-    setHdhrConnected,
-    setHdhrTunerIp,
+
   } = useAppStore()
 
   const {
@@ -146,58 +140,6 @@ export default function Home() {
     }
     checkJellyfin()
   }, [setJellyfinConnected, setJellyfinServer])
-
-  // Auto-connect HDHomerun tuner on mount
-  // The server-side auto-connect just checks the DB (no HTTP calls to the tuner).
-  // Client-side code then verifies reachability from the user's browser.
-  const hdhrAutoConnectRef = useRef(false)
-
-  useEffect(() => {
-    if (hdhrAutoConnectRef.current) return
-    hdhrAutoConnectRef.current = true
-
-    const autoConnectHDHR = async () => {
-      // Step 1: Check server-side DB for known tuner
-      let hdhrIp: string | null = null
-      try {
-        const res = await fetch('/api/hdhomerun/auto-connect', {
-          method: 'POST',
-        })
-
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success && data.tuner) {
-            setHdhrConnected(true)
-            setHdhrTunerIp(data.tuner.tunerIp)
-            return // Already connected
-          }
-          // Server knows a tuner IP but couldn't verify — try client-side
-          hdhrIp = data.knownTunerIp || data.defaultIp || null
-        }
-      } catch (err) {
-        console.warn('Server-side HDHomerun auto-connect failed:', err)
-      }
-
-      // Step 2: Client-side discovery — try known IP or env var
-      if (!hdhrIp) {
-        hdhrIp = getHDHomerunIp()
-      }
-      if (hdhrIp) {
-        try {
-          const deviceInfo = await discoverHDHomerun(hdhrIp)
-          if (deviceInfo) {
-            setHdhrConnected(true)
-            setHdhrTunerIp(hdhrIp)
-            setHDHomerunIp(hdhrIp)
-            console.log('[MyTube] HDHomerun discovered via client-side at', hdhrIp, deviceInfo.ModelName || deviceInfo.Model)
-          }
-        } catch (err) {
-          console.warn('Client-side HDHomerun discovery failed:', err)
-        }
-      }
-    }
-    autoConnectHDHR()
-  }, [setHdhrConnected, setHdhrTunerIp])
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return
@@ -377,16 +319,6 @@ export default function Home() {
       )
     }
 
-    // Live TV full-screen view
-    if (showLiveTV) {
-      return (
-        <LiveTVGuide
-          onPlay={handlePlay}
-          onBack={() => setShowLiveTV(false)}
-        />
-      )
-    }
-
     // During SSR/hydration, render a consistent loading state to prevent mismatch.
     // After mount, localStorage data (watchHistory/watchLater) is available,
     // so we can render the full sections-based UI.
@@ -444,7 +376,6 @@ export default function Home() {
           topSlot={<AIConcierge onPlay={handlePlay} />}
           middleSlot={(
             <>
-              <LiveTVSection onPlay={handlePlay} onViewAll={() => setShowLiveTV(true)} />
               <AIRadioStations onPlay={handlePlay} />
               <SemanticDiscovery onPlay={handlePlay} />
               <SmartCollections onPlay={handlePlay} />

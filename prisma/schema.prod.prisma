@@ -58,20 +58,6 @@ model JellyfinServer {
   updatedAt     DateTime @updatedAt
 }
 
-model HDHomerunTuner {
-  id            String   @id @default(cuid())
-  name          String   @default("HDHomeRun")
-  tunerIp       String
-  tunerCount    Int      @default(2)
-  model         String   @default("")
-  firmware      String   @default("")
-  deviceId      String   @default("")
-  connected     Boolean  @default(false)
-  lastConnected DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-
 model MediaCache {
   id        String   @id @default(cuid())
   cacheKey  String   @unique

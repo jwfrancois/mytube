@@ -188,7 +188,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
 
   // Safety filter: when a specific category is selected, only show items matching that type.
   // This prevents Jellyfin items of wrong types from leaking into the wrong category page.
-  const filteredItems = activeCategory !== 'ALL' && activeCategory !== 'JELLYFIN' && activeCategory !== 'LIVETV'
+  const filteredItems = activeCategory !== 'ALL' && activeCategory !== 'JELLYFIN'
     ? items.filter(item => item.type === activeCategory)
     : items
 
@@ -201,7 +201,6 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
     AUDIOBOOK: 'Audiobooks',
     COLLECTION: 'Collections',
     JELLYFIN: 'Jellyfin NAS',
-    LIVETV: 'Live TV',
   }
 
   if (isLoading) {

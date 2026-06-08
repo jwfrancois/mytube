@@ -39,7 +39,6 @@ import {
   BookOpen,
   X,
   RefreshCw,
-  Radio,
 } from 'lucide-react'
 import { MediaDetail } from '@/components/MediaDetail'
 import { AudioVisualizer } from '@/components/AudioVisualizer'
@@ -905,7 +904,6 @@ export function VideoPlayer() {
     setVolume,
     playbackSpeed,
     setPlaybackSpeed,
-    hdhrTunerIp,
   } = useAppStore()
 
   const [liked, setLiked] = useState(false)
@@ -975,48 +973,6 @@ export function VideoPlayer() {
     }
   }, [videoElementState])
 
-  // Handle Live TV stream — fetches the stream API and plays the result
-  const handleLiveTVStream = useCallback(async (channelId: string) => {
-    try {
-      // For HDHomerun channels, pass the tuner IP from the store so the server
-      // can build the correct stream URL even if it couldn't discover the tuner
-      const params = new URLSearchParams()
-      if (channelId.startsWith('hdhr-') && hdhrTunerIp) {
-        params.set('tunerIp', hdhrTunerIp)
-      }
-      const streamUrl = `/api/livetv/stream/${encodeURIComponent(channelId)}${params.toString() ? '?' + params.toString() : ''}`
-      const res = await fetch(streamUrl)
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}))
-        console.error('[VideoPlayer] Live TV stream endpoint error:', res.status, errorData)
-        setVideoError(errorData.error || `Failed to load Live TV stream (HTTP ${res.status}).`)
-        setVideoLoading(false)
-        return
-      }
-
-      const contentType = res.headers.get('content-type') || ''
-
-      if (contentType.includes('application/json')) {
-        // HDHomerun or Jellyfin Live TV: returns JSON with the stream URL
-        const data = await res.json()
-        if (data.url) {
-          playDirectM3U8(data.url)
-        } else {
-          setVideoError('No playable stream URL found for this channel.')
-          setVideoLoading(false)
-        }
-      } else {
-        // Built-in channels: returns M3U8 playlist directly
-        playDirectM3U8(streamUrl)
-      }
-    } catch (err) {
-      console.error('Live TV stream fetch failed:', err)
-      setVideoError('Failed to load Live TV stream. Check your network connection.')
-      setVideoLoading(false)
-    }
-  }, [playDirectM3U8, setVideoError, setVideoLoading, hdhrTunerIp])
-
   // Sync video element volume/speed with shared store state
   useEffect(() => {
     const video = videoRef.current
@@ -1045,23 +1001,11 @@ export function VideoPlayer() {
     )
     const isAudio = isAudioType(currentMedia.type) && !isBrowsableContainer
 
-    // Live TV — play the stream through our proxy
-    if (currentMedia.type === 'LIVETV') {
-      const channelId = currentMedia.id
-      if (channelId) {
-        handleLiveTVStream(channelId)
-      } else {
-        setVideoError('No stream URL available for this channel.')
-        setVideoLoading(false)
-      }
-      return
-    }
-
     // Only start playback for Jellyfin video content (not audio, not browsable containers)
     if (isJellyfin && !isAudio && !isBrowsableContainer && currentMedia.jellyfinId) {
       startPlayback()
     }
-  }, [currentMedia?.id]) // Intentionally minimal deps — startPlayback/handleLiveTVStream use refs internally
+  }, [currentMedia?.id]) // Intentionally minimal deps — startPlayback uses refs internally
 
   // Populate audio queue when playing audio content from an album
   useEffect(() => {
@@ -1233,10 +1177,6 @@ export function VideoPlayer() {
     destroyHls()
     setCurrentMedia(null)
     queuePopulatedRef.current = null
-    // If we were playing Live TV, go back to Live TV guide
-    if (currentMedia?.type === 'LIVETV') {
-      useAppStore.getState().setShowLiveTV(true)
-    }
   }
 
   // ─── Browsable Container View (Series, Collections, Albums, Podcasts) ───
@@ -1337,14 +1277,12 @@ export function VideoPlayer() {
     )
   }
 
-  // ─── Video Player View (Movies/Episodes/Live TV) ───
-  const isLiveTV = currentMedia.type === 'LIVETV'
+  // ─── Video Player View (Movies/Episodes) ───
 
   const typeColor = {
     MOVIE: 'bg-red-500/10 text-red-500',
     TV_SHOW: 'bg-emerald-500/10 text-emerald-500',
     MUSIC: 'bg-purple-500/10 text-purple-500',
-    LIVETV: 'bg-red-500/10 text-red-400',
   }[currentMedia.type] || ''
 
   return (
@@ -1360,8 +1298,8 @@ export function VideoPlayer() {
 
           {/* Video Player */}
           <div className="relative aspect-video rounded-xl overflow-hidden bg-black">
-            {isJellyfin || isLiveTV ? (
-              /* Jellyfin / Live TV video: managed by useHlsVideoPlayer hook */
+            {isJellyfin ? (
+              /* Jellyfin video: managed by useHlsVideoPlayer hook */
               <video
                 ref={videoRef}
                 controls
@@ -1397,23 +1335,13 @@ export function VideoPlayer() {
               />
             )}
 
-            {/* Live Badge for Live TV */}
-            {isLiveTV && isVideoPlaying && (
-              <div className="absolute top-3 left-3">
-                <Badge className="bg-red-500 text-white gap-1 shadow-lg">
-                  <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                  LIVE
-                </Badge>
-              </div>
-            )}
-
             {/* Loading overlay */}
             {videoLoading && !videoError && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/50 pointer-events-none">
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 className="h-10 w-10 text-white animate-spin" />
                   <span className="text-white text-sm">
-                    {isLiveTV ? 'Connecting to live stream...' : 'Loading video...'}
+                    Loading video...
                   </span>
                 </div>
               </div>
@@ -1560,20 +1488,8 @@ export function VideoPlayer() {
                     </>
                   )}
                   <Badge variant="secondary" className={cn("text-xs ml-1", typeColor)}>
-                    {isLiveTV ? 'Live TV' : currentMedia.type === 'TV_SHOW' ? 'TV Show' : currentMedia.type.charAt(0) + currentMedia.type.slice(1).toLowerCase()}
+                    {currentMedia.type === 'TV_SHOW' ? 'TV Show' : currentMedia.type.charAt(0) + currentMedia.type.slice(1).toLowerCase()}
                   </Badge>
-                  {isLiveTV && (
-                    <Badge className="text-xs bg-red-500 text-white gap-1">
-                      <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                      LIVE
-                    </Badge>
-                  )}
-                  {isLiveTV && currentMedia.channel?.startsWith('OTA') && (
-                    <Badge variant="outline" className="text-xs text-amber-400 border-amber-500/30 gap-1">
-                      <Radio className="h-3 w-3" />
-                      HDHomerun OTA
-                    </Badge>
-                  )}
                   {currentMedia.genre && (
                     <Badge variant="outline" className="text-xs">
                       {currentMedia.genre}
@@ -1628,21 +1544,21 @@ export function VideoPlayer() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <Avatar className="h-10 w-10">
-                  <AvatarFallback className={cn("bg-muted", isJellyfin && "bg-emerald-500/10 text-emerald-500", isLiveTV && "bg-red-500/10 text-red-400")}>
-                    {isLiveTV ? <Radio className="h-5 w-5" /> : isJellyfin ? <Server className="h-5 w-5" /> : (currentMedia.channel?.charAt(0) || currentMedia.artist?.charAt(0) || 'C')}
+                  <AvatarFallback className={cn("bg-muted", isJellyfin && "bg-emerald-500/10 text-emerald-500")}>
+                    {isJellyfin ? <Server className="h-5 w-5" /> : (currentMedia.channel?.charAt(0) || currentMedia.artist?.charAt(0) || 'C')}
                   </AvatarFallback>
                 </Avatar>
                 <div>
                   <p className="font-medium text-sm">{currentMedia.channel || currentMedia.artist}</p>
                   <p className="text-xs text-muted-foreground">
-                    {isLiveTV ? 'Live TV' : isJellyfin ? 'Jellyfin NAS' : currentMedia.artist}
+                    {isJellyfin ? 'Jellyfin NAS' : currentMedia.artist}
                   </p>
                 </div>
               </div>
-              {(isJellyfin || isLiveTV) && (
+              {isJellyfin && (
                 <Badge variant="outline" className="gap-1">
-                  {isLiveTV ? <Radio className="h-3 w-3" /> : <Server className="h-3 w-3" />}
-                  {isLiveTV ? 'LIVE' : 'NAS'}
+                  <Server className="h-3 w-3" />
+                  NAS
                 </Badge>
               )}
             </div>

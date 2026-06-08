@@ -41,7 +41,6 @@ function determineType(
     return 'TV_SHOW'
   }
   if (item.Type === 'AudioBook') return 'AUDIOBOOK'
-  if (item.Type === 'LiveTvChannel' || item.Type === 'LiveTvProgram') return 'PODCAST'
   if (item.Type === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'MusicArtist') {
     if (parentCollectionType === 'podcasts') return 'PODCAST'
     if (parentCollectionType === 'books') return 'AUDIOBOOK'

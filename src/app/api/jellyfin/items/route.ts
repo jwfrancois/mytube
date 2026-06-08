@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     let url: string
 
     if (searchTerm) {
-      url = `${creds.serverUrl}/Items?UserId=${creds.userId}&SearchTerm=${encodeURIComponent(searchTerm)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,LiveTvChannel,LiveTvProgram&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People&SortBy=SortName&SortOrder=Ascending&Limit=100`
+      url = `${creds.serverUrl}/Items?UserId=${creds.userId}&SearchTerm=${encodeURIComponent(searchTerm)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People&SortBy=SortName&SortOrder=Ascending&Limit=100`
     } else if (parentId) {
       url = `${creds.serverUrl}/Items?ParentId=${parentId}&UserId=${creds.userId}&Recursive=false&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People&SortBy=SortName&SortOrder=Ascending&Limit=200`
     } else {
@@ -56,8 +56,6 @@ export async function GET(request: NextRequest) {
         type = parentCollectionType === 'podcasts' ? 'PODCAST' : 'TV_SHOW'
       } else if (item.Type === 'AudioBook') {
         type = 'AUDIOBOOK'
-      } else if (item.Type === 'LiveTvChannel' || item.Type === 'LiveTvProgram') {
-        type = 'PODCAST'
       } else if (item.Type === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'MusicArtist') {
         if (parentCollectionType === 'podcasts') {
           type = 'PODCAST'

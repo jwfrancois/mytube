@@ -220,8 +220,7 @@ const itemTypeLabels: Record<string, string> = {
   MusicAlbum: 'Album',
   MusicArtist: 'Artist',
   AudioBook: 'Audiobook',
-  LiveTvChannel: 'Live Channel',
-  LiveTvProgram: 'Live Program',
+
   BoxSet: 'Collection',
 }
 

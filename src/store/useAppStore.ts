@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { isAudioType } from '@/lib/media-utils'
 
-export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'PODCAST' | 'AUDIOBOOK' | 'COLLECTION' | 'JELLYFIN' | 'LIVETV'
+export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'PODCAST' | 'AUDIOBOOK' | 'COLLECTION' | 'JELLYFIN'
 export type SortType = 'recent' | 'popular'
 
 export interface MediaItem {
@@ -120,16 +120,6 @@ interface AppState {
   // Knowledge Graph view
   showKnowledgeGraph: boolean
   setShowKnowledgeGraph: (show: boolean) => void
-
-  // Live TV view
-  showLiveTV: boolean
-  setShowLiveTV: (show: boolean) => void
-
-  // HDHomerun
-  hdhrConnected: boolean
-  setHdhrConnected: (connected: boolean) => void
-  hdhrTunerIp: string
-  setHdhrTunerIp: (ip: string) => void
 
   // Persistent Audio Track (decoupled from currentMedia for background playback)
   audioTrack: MediaItem | null
@@ -330,14 +320,4 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Knowledge Graph
   showKnowledgeGraph: false,
   setShowKnowledgeGraph: (show) => set({ showKnowledgeGraph: show }),
-
-  // Live TV
-  showLiveTV: false,
-  setShowLiveTV: (show) => set({ showLiveTV: show }),
-
-  // HDHomerun
-  hdhrConnected: false,
-  setHdhrConnected: (connected) => set({ hdhrConnected: connected }),
-  hdhrTunerIp: '',
-  setHdhrTunerIp: (ip) => set({ hdhrTunerIp: ip }),
 }))
