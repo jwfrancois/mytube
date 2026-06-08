@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     const tunerIp = searchParams.get('tunerIp')
 
     // Find the tuner — try connected first, then any tuner with an IP
-    let tuner = null
+    let tuner: any = null
     if (tunerId) {
       tuner = await db.hDHomerunTuner.findFirst({ where: { id: tunerId } })
     } else {
