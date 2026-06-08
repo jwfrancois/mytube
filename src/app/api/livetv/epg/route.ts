@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BUILT_IN_CHANNELS, LIVE_TV_CATEGORIES } from '@/lib/livetv-channels'
-import { db } from '@/lib/db'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,11 +28,11 @@ export async function GET(request: NextRequest) {
     // Try to fetch EPG from Jellyfin if connected
     let jellyfinEPG: any[] = []
     try {
-      const server = await db.jellyfinServer.findFirst()
-      if (server && server.connected) {
-        const url = `${server.serverUrl}/LiveTv/Programs?UserId=${server.userId}&api_key=${server.accessToken}&Limit=100`
+      const creds = await getJellyfinCredentials()
+      if (creds && creds.connected) {
+        const url = `${creds.serverUrl}/LiveTv/Programs?UserId=${creds.userId}&api_key=${creds.accessToken}&Limit=100`
         const res = await fetch(url, {
-          headers: { 'X-Emby-Token': server.accessToken },
+          headers: { 'X-Emby-Token': creds.accessToken },
           signal: AbortSignal.timeout(10000),
         })
         if (res.ok) {

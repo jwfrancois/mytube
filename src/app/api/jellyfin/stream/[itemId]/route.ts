@@ -1,5 +1,5 @@
-import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 
 export async function GET(
   request: NextRequest,
@@ -7,33 +7,28 @@ export async function GET(
 ) {
   try {
     const { itemId } = await params
-    const server = await db.jellyfinServer.findFirst()
+    const creds = await getJellyfinCredentials()
 
-    if (!server || !server.connected) {
+    if (!creds || !creds.connected) {
       return NextResponse.json({ error: 'Not connected to Jellyfin' }, { status: 400 })
     }
 
     const { searchParams } = new URL(request.url)
     const mediaSourceId = searchParams.get('mediaSourceId') || itemId
     const mediaType = searchParams.get('mediaType') || 'video'
-    const directStream = searchParams.get('directStream') !== 'false'
-    const streamFormat = searchParams.get('streamFormat') || 'direct' // 'direct' | 'hls' | 'transcode'
+    const streamFormat = searchParams.get('streamFormat') || 'direct'
 
-    // DeviceId for session tracking
-    const deviceId = `mytube-server-${server.id}`
+    const deviceId = `mytube-server`
 
-    // ─── HLS Mode: Proxy the m3u8 playlist with rewritten URLs ───
-    // We fetch the m3u8 from Jellyfin, rewrite all segment URLs to go through
-    // our /api/jellyfin/hls-proxy endpoint, and return the rewritten playlist.
-    // This avoids CORS issues when hls.js tries to fetch segments directly.
+    // ─── HLS Mode ───
     if (streamFormat === 'hls') {
       try {
-        const playbackInfoUrl = `${server.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${server.userId}&MaxStreamingBitrate=20000000&StartTimeTicks=0&AutoOpenLiveStream=true&DeviceId=${deviceId}`
+        const playbackInfoUrl = `${creds.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${creds.userId}&MaxStreamingBitrate=20000000&StartTimeTicks=0&AutoOpenLiveStream=true&DeviceId=${deviceId}`
         const playbackRes = await fetch(playbackInfoUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Emby-Token': server.accessToken,
+            'X-Emby-Token': creds.accessToken,
           },
           body: JSON.stringify({
             DeviceProfile: {
@@ -41,7 +36,6 @@ export async function GET(
               MaxStaticBitrate: 20000000,
               MusicStreamingTranscodingBitrate: 320000,
               DirectPlayProfiles: [
-                // Only containers/codecs that browsers can actually play natively
                 { Container: 'mp4,m4v', VideoCodec: 'h264', AudioCodec: 'aac,mp3,ac3,eac3', Type: 'Video' },
                 { Container: 'webm', VideoCodec: 'vp9,vp8,av1', AudioCodec: 'opus,vorbis', Type: 'Video' },
                 { Container: 'mov', VideoCodec: 'h264', AudioCodec: 'aac,mp3', Type: 'Video' },
@@ -64,15 +58,10 @@ export async function GET(
           const playbackData = await playbackRes.json()
           const mediaSource = playbackData.MediaSources?.[0]
 
-          // Always use HLS through our proxy — avoids CORS issues when the browser
-          // can't reach the Jellyfin server directly.  Even when direct play is
-          // available, the raw Jellyfin URL would fail from the browser due to
-          // CORS, so we route everything through our server-side proxy.
           if (mediaSource?.TranscodingUrl) {
             const hlsUrl = mediaSource.TranscodingUrl.startsWith('http')
               ? mediaSource.TranscodingUrl
-              : `${server.serverUrl}${mediaSource.TranscodingUrl}`
-
+              : `${creds.serverUrl}${mediaSource.TranscodingUrl}`
             const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`
             return NextResponse.json({
               url: proxyUrl,
@@ -81,12 +70,10 @@ export async function GET(
             })
           }
 
-          // If Jellyfin says direct play but no TranscodingUrl, build an HLS
-          // URL manually — the proxy handles authentication and CORS.
           if (mediaSource?.SupportsDirectPlay || mediaSource?.SupportsDirectStream) {
             const hlsParams = new URLSearchParams({
               MediaSourceId: mediaSource.Id || mediaSourceId,
-              api_key: server.accessToken,
+              api_key: creds.accessToken,
               DeviceId: deviceId,
               VideoCodec: 'h264',
               AudioCodec: 'aac',
@@ -98,7 +85,7 @@ export async function GET(
               BreakOnNonKeyFrames: 'true',
               StartTimeTicks: '0',
             })
-            const hlsUrl = `${server.serverUrl}/Videos/${itemId}/stream.${encodeURIComponent('m3u8')}?${hlsParams.toString()}`
+            const hlsUrl = `${creds.serverUrl}/Videos/${itemId}/stream.${encodeURIComponent('m3u8')}?${hlsParams.toString()}`
             const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`
             return NextResponse.json({
               url: proxyUrl,
@@ -106,7 +93,6 @@ export async function GET(
               mediaSourceId: mediaSource.Id || mediaSourceId,
             })
           }
-
         } else {
           console.error('PlaybackInfo failed:', playbackRes.status)
         }
@@ -114,10 +100,10 @@ export async function GET(
         console.error('HLS playback info error:', err)
       }
 
-      // Fallback: construct an HLS URL manually and proxy it
+      // Fallback: construct an HLS URL manually
       const hlsParams = new URLSearchParams({
         MediaSourceId: mediaSourceId,
-        api_key: server.accessToken,
+        api_key: creds.accessToken,
         DeviceId: deviceId,
         VideoCodec: 'h264',
         AudioCodec: 'aac',
@@ -129,7 +115,7 @@ export async function GET(
         BreakOnNonKeyFrames: 'true',
         StartTimeTicks: '0',
       })
-      const hlsUrl = `${server.serverUrl}/Videos/${itemId}/stream.${encodeURIComponent('m3u8')}?${hlsParams.toString()}`
+      const hlsUrl = `${creds.serverUrl}/Videos/${itemId}/stream.${encodeURIComponent('m3u8')}?${hlsParams.toString()}`
       const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`
 
       return NextResponse.json({
@@ -141,14 +127,12 @@ export async function GET(
 
     // ─── Audio Mode ───
     if (mediaType === 'audio' || mediaType === 'music') {
-      // Forward the Range header from the client for seeking support
       const headers: Record<string, string> = {}
       const rangeHeader = request.headers.get('range')
       if (rangeHeader) {
         headers['Range'] = rangeHeader
       }
 
-      // Helper to proxy an audio response
       const proxyAudioResponse = (res: Response) => {
         const contentType = res.headers.get('content-type') || 'audio/mpeg'
         const contentLength = res.headers.get('content-length')
@@ -171,14 +155,14 @@ export async function GET(
         })
       }
 
-      // Strategy 0: Try direct download endpoint (no transcoding)
+      // Strategy 0: Try direct download endpoint
       try {
-        const downloadUrl = `${server.serverUrl}/Items/${itemId}/Download?api_key=${server.accessToken}`
+        const downloadUrl = `${creds.serverUrl}/Items/${itemId}/Download?api_key=${creds.accessToken}`
         const downloadController = new AbortController()
         const downloadTimeout = setTimeout(() => downloadController.abort(), 30000)
 
         const downloadRes = await fetch(downloadUrl, {
-          headers: { ...headers, 'X-Emby-Token': server.accessToken },
+          headers: { ...headers, 'X-Emby-Token': creds.accessToken },
           signal: downloadController.signal,
         })
 
@@ -195,9 +179,9 @@ export async function GET(
 
       // Strategy 1: Try the universal audio endpoint
       const audioParams = new URLSearchParams({
-        UserId: server.userId,
+        UserId: creds.userId,
         DeviceId: deviceId,
-        api_key: server.accessToken,
+        api_key: creds.accessToken,
         Container: 'mp3,aac,ogg,wav,flac,alac,m4a,wma,flac',
         TranscodingContainer: 'mp3',
         TranscodingProtocol: 'http',
@@ -206,7 +190,7 @@ export async function GET(
         StartTimeTicks: '0',
       })
 
-      const universalUrl = `${server.serverUrl}/Audio/${itemId}/universal?${audioParams.toString()}`
+      const universalUrl = `${creds.serverUrl}/Audio/${itemId}/universal?${audioParams.toString()}`
 
       try {
         const controller = new AbortController()
@@ -223,15 +207,14 @@ export async function GET(
           return proxyAudioResponse(res)
         }
 
-        // Universal endpoint failed — log and try fallback
         console.warn(`Jellyfin universal audio endpoint returned ${res.status} for item ${itemId}, trying PlaybackInfo fallback...`)
       } catch (err) {
         console.warn('Jellyfin universal audio endpoint error, trying PlaybackInfo fallback:', err)
       }
 
-      // Strategy 2: Use PlaybackInfo API to get a stream URL (like video mode does)
+      // Strategy 2: Use PlaybackInfo API
       try {
-        const playbackInfoUrl = `${server.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${server.userId}&MaxStreamingBitrate=3200000&StartTimeTicks=0&AutoOpenLiveStream=true&DeviceId=${deviceId}`
+        const playbackInfoUrl = `${creds.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${creds.userId}&MaxStreamingBitrate=3200000&StartTimeTicks=0&AutoOpenLiveStream=true&DeviceId=${deviceId}`
         const playbackController = new AbortController()
         const playbackTimeout = setTimeout(() => playbackController.abort(), 10000)
 
@@ -239,7 +222,7 @@ export async function GET(
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Emby-Token': server.accessToken,
+            'X-Emby-Token': creds.accessToken,
           },
           body: JSON.stringify({
             DeviceProfile: {
@@ -270,13 +253,12 @@ export async function GET(
 
           if (mediaSource) {
             if (mediaSource.SupportsDirectPlay || mediaSource.SupportsDirectStream) {
-              // Direct stream URL
-              audioStreamUrl = `${server.serverUrl}/Audio/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
+              audioStreamUrl = `${creds.serverUrl}/Audio/${itemId}/stream?Static=true&MediaSourceId=${mediaSource.Id || mediaSourceId}&api_key=${creds.accessToken}&DeviceId=${deviceId}`
             } else if (mediaSource.TranscodingUrl) {
               const transcodeUrl = mediaSource.TranscodingUrl
               audioStreamUrl = transcodeUrl.startsWith('http')
                 ? transcodeUrl
-                : `${server.serverUrl}${transcodeUrl}`
+                : `${creds.serverUrl}${transcodeUrl}`
             }
           }
 
@@ -304,7 +286,7 @@ export async function GET(
 
       // Strategy 3: Last resort — direct stream URL
       try {
-        const directUrl = `${server.serverUrl}/Audio/${itemId}/stream?Static=true&MediaSourceId=${mediaSourceId}&api_key=${server.accessToken}&DeviceId=${deviceId}`
+        const directUrl = `${creds.serverUrl}/Audio/${itemId}/stream?Static=true&MediaSourceId=${mediaSourceId}&api_key=${creds.accessToken}&DeviceId=${deviceId}`
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 120000)
 
@@ -327,16 +309,7 @@ export async function GET(
       }
     }
 
-    // ─── Video Mode (Direct / Transcode) ───
-    // IMPORTANT: We always return HLS JSON for video content because proxying
-    // entire video files through a Next.js API route is too slow (buffers the
-    // whole file before sending, causing 30s+ timeouts). HLS works through
-    // small chunked segments that stream quickly through the proxy.
-    //
-    // The client-side VideoPlayer always uses hls.js to parse the HLS JSON
-    // response and play the stream, regardless of the requested strategy.
-
-    // Helper: build HLS JSON response with a proxy URL
+    // ─── Video Mode ───
     const makeHlsResponse = (hlsUrl: string, msId?: string) => {
       const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`
       return NextResponse.json({
@@ -346,11 +319,10 @@ export async function GET(
       })
     }
 
-    // Helper: construct a manual HLS transcoding URL
     const buildManualHlsUrl = () => {
       const hlsParams = new URLSearchParams({
         MediaSourceId: mediaSourceId,
-        api_key: server.accessToken,
+        api_key: creds.accessToken,
         DeviceId: deviceId,
         VideoCodec: 'h264',
         AudioCodec: 'aac',
@@ -362,12 +334,11 @@ export async function GET(
         BreakOnNonKeyFrames: 'true',
         StartTimeTicks: '0',
       })
-      return `${server.serverUrl}/Videos/${itemId}/stream.${encodeURIComponent('m3u8')}?${hlsParams.toString()}`
+      return `${creds.serverUrl}/Videos/${itemId}/stream.${encodeURIComponent('m3u8')}?${hlsParams.toString()}`
     }
 
-    // Try PlaybackInfo to get the optimal streaming URL
     try {
-      const playbackInfoUrl = `${server.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${server.userId}&MaxStreamingBitrate=20000000&StartTimeTicks=0&AutoOpenLiveStream=true&DeviceId=${deviceId}`
+      const playbackInfoUrl = `${creds.serverUrl}/Items/${itemId}/PlaybackInfo?UserId=${creds.userId}&MaxStreamingBitrate=20000000&StartTimeTicks=0&AutoOpenLiveStream=true&DeviceId=${deviceId}`
       const playbackController = new AbortController()
       const playbackTimeout = setTimeout(() => playbackController.abort(), 30000)
 
@@ -375,15 +346,13 @@ export async function GET(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-Emby-Token': server.accessToken,
+          'X-Emby-Token': creds.accessToken,
         },
         body: JSON.stringify({
           DeviceProfile: {
             MaxStreamingBitrate: 20000000,
             MaxStaticBitrate: 20000000,
             MusicStreamingTranscodingBitrate: 320000,
-            // Prefer direct play — avoids HLS transcoding issues (fragLoadError)
-            // Only containers/codecs that browsers can actually play natively
             DirectPlayProfiles: [
               { Container: 'mp4,m4v', VideoCodec: 'h264', AudioCodec: 'aac,mp3,ac3,eac3', Type: 'Video' },
               { Container: 'webm', VideoCodec: 'vp9,vp8,av1', AudioCodec: 'opus,vorbis', Type: 'Video' },
@@ -412,16 +381,13 @@ export async function GET(
         const playbackData = await playbackRes.json()
         const mediaSource = playbackData.MediaSources?.[0]
 
-        // Always use HLS through our proxy — avoids CORS issues when the browser
-        // can't reach the Jellyfin server directly.
         if (mediaSource?.TranscodingUrl) {
           const hlsUrl = mediaSource.TranscodingUrl.startsWith('http')
             ? mediaSource.TranscodingUrl
-            : `${server.serverUrl}${mediaSource.TranscodingUrl}`
+            : `${creds.serverUrl}${mediaSource.TranscodingUrl}`
           return makeHlsResponse(hlsUrl, mediaSource.Id || mediaSourceId)
         }
 
-        // If only direct play is available, force HLS transcoding through our proxy
         if (mediaSource?.SupportsDirectPlay || mediaSource?.SupportsDirectStream) {
           return makeHlsResponse(buildManualHlsUrl(), mediaSource.Id || mediaSourceId)
         }
@@ -430,7 +396,6 @@ export async function GET(
       console.error('Playback info error, using manual HLS URL:', err)
     }
 
-    // Fallback: construct an HLS URL manually
     return makeHlsResponse(buildManualHlsUrl())
   } catch (error) {
     console.error('Jellyfin stream error:', error)

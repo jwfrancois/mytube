@@ -1,9 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-
-// In-memory cache for the media list
-const mediaCache = new Map<string, { data: any; expires: number }>()
-const CACHE_TTL = 2 * 60 * 1000 // 2 minutes
+import { mediaCache } from '@/lib/media-cache'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,11 +12,11 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
     const includeJellyfin = searchParams.get('includeJellyfin') === 'true'
 
-    // Check cache for this query
-    const cacheKey = `${type || 'all'}-${genre || 'all'}-${sort}-${limit}-${offset}-${includeJellyfin}`
-    const cached = mediaCache.get(cacheKey)
-    if (cached && cached.expires > Date.now()) {
-      return NextResponse.json(cached.data)
+    // Check DB-backed cache
+    const cacheKey = `media-${type || 'all'}-${genre || 'all'}-${sort}-${limit}-${offset}-${includeJellyfin}`
+    const cached = await mediaCache.get(cacheKey)
+    if (cached) {
+      return NextResponse.json(cached)
     }
 
     const where: Record<string, string> = {}
@@ -42,13 +39,11 @@ export async function GET(request: NextRequest) {
 
     if (includeJellyfin) {
       try {
-        const server = await db.jellyfinServer.findFirst()
-        if (server && server.connected) {
-          // When a specific type is requested, only fetch that type from Jellyfin.
-          // Otherwise (ALL), fetch all categories.
+        const { getJellyfinCredentials } = await import('@/lib/jellyfin-credentials')
+        const creds = await getJellyfinCredentials()
+        if (creds && creds.connected) {
           const types = type ? [type] : ['MOVIE', 'TV_SHOW', 'MUSIC', 'PODCAST', 'AUDIOBOOK', 'COLLECTION']
-          
-          // Process in batches of 2 to reduce memory pressure
+
           for (let i = 0; i < types.length; i += 2) {
             const batch = types.slice(i, i + 2)
             const results = await Promise.allSettled(
@@ -72,12 +67,10 @@ export async function GET(request: NextRequest) {
         }
       } catch (err) {
         console.error('Failed to fetch Jellyfin items for category:', err)
-        // Non-fatal: continue with local items only
       }
     }
 
     // Merge: Jellyfin items first, then local items
-    // Deduplicate by id (Jellyfin items prefixed with 'jf-')
     const seenIds = new Set<string>()
     const allMedia = [...jellyfinItems, ...media].filter((item) => {
       if (seenIds.has(item.id)) return false
@@ -91,9 +84,9 @@ export async function GET(request: NextRequest) {
       localCount: total,
       jellyfinCount: jellyfinTotal,
     }
-    
-    // Cache the result
-    mediaCache.set(cacheKey, { data: result, expires: Date.now() + CACHE_TTL })
+
+    // Cache in DB for 2 minutes
+    await mediaCache.set(cacheKey, result, 120)
 
     return NextResponse.json(result)
   } catch (error) {
@@ -120,10 +113,10 @@ export async function POST(request: NextRequest) {
         views: 0,
       },
     })
-    
-    // Invalidate cache on new media creation
-    mediaCache.clear()
-    
+
+    // Invalidate media cache on new media creation
+    await mediaCache.deleteByPrefix('media-')
+
     return NextResponse.json(media, { status: 201 })
   } catch (error) {
     console.error('Error creating media:', error)

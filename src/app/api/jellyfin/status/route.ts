@@ -1,31 +1,29 @@
-import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 
 export async function GET() {
   try {
-    const servers = await db.jellyfinServer.findMany()
+    // This will auto-connect from env vars if no credentials are in DB
+    const creds = await getJellyfinCredentials()
 
-    if (servers.length === 0) {
+    if (!creds || !creds.connected) {
       return NextResponse.json({ connected: false, server: null })
     }
 
-    const server = servers[0]
-
-    // Return connection info from DB without making external requests
-    // External verification can cause process stability issues
-    // Known server ID constant (not stored in DB to avoid schema migration)
-    const JELLYFIN_SERVER_ID = '363ac50118644e63bddcd34c6dc063a9'
+    // Also check DB for the server record to get the full info
+    const { db } = await import('@/lib/db')
+    const server = await db.jellyfinServer.findFirst()
 
     return NextResponse.json({
-      connected: server.connected,
+      connected: true,
       server: {
-        id: server.id,
-        name: server.name,
-        serverUrl: server.serverUrl,
-        username: server.username,
-        connected: server.connected,
-        lastConnected: server.lastConnected,
-        serverId: JELLYFIN_SERVER_ID,
+        id: server?.id || 'auto',
+        name: server?.name || 'My Jellyfin',
+        serverUrl: creds.serverUrl,
+        username: creds.username,
+        connected: true,
+        lastConnected: server?.lastConnected || new Date().toISOString(),
+        serverId: creds.serverId,
       },
     })
   } catch (error) {

@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { mediaCache } from '@/lib/media-cache'
 
 export async function POST(request: NextRequest) {
   try {
@@ -57,7 +58,10 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Known server ID constant (not stored in DB to avoid schema migration)
+    // Invalidate all cached media data since we have a new connection
+    await mediaCache.clear()
+
+    // Known server ID constant
     const JELLYFIN_SERVER_ID = '363ac50118644e63bddcd34c6dc063a9'
 
     return NextResponse.json({

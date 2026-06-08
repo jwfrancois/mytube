@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 
@@ -174,8 +174,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. Get Jellyfin credentials
-    const server = await db.jellyfinServer.findFirst()
-    if (!server || !server.connected) {
+    const creds = await getJellyfinCredentials()
+    if (!creds || !creds.connected) {
       return NextResponse.json(
         { error: 'Not connected to Jellyfin' },
         { status: 400 }
@@ -189,9 +189,9 @@ export async function POST(request: NextRequest) {
       const viewsTimeout = setTimeout(() => viewsController.abort(), 5000)
 
       const viewsRes = await fetch(
-        `${server.serverUrl}/Users/${server.userId}/Views`,
+        `${creds.serverUrl}/Users/${creds.userId}/Views`,
         {
-          headers: { 'X-Emby-Token': server.accessToken },
+          headers: { 'X-Emby-Token': creds.accessToken },
           signal: viewsController.signal,
         }
       )
@@ -210,13 +210,13 @@ export async function POST(request: NextRequest) {
     // 3. Try Jellyfin's built-in search first (much faster than fetching all items)
     let rawItems: JellyfinItem[] = []
     try {
-      const searchUrl = `${server.serverUrl}/Items?UserId=${server.userId}&SearchTerm=${encodeURIComponent(query)}&Recursive=true&IncludeItemTypes=Movie,Series,Audio,AudioBook&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=50`
+      const searchUrl = `${creds.serverUrl}/Items?UserId=${creds.userId}&SearchTerm=${encodeURIComponent(query)}&Recursive=true&IncludeItemTypes=Movie,Series,Audio,AudioBook&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=50`
 
       const searchController = new AbortController()
       const searchTimeout = setTimeout(() => searchController.abort(), 10000)
 
       const searchRes = await fetch(searchUrl, {
-        headers: { 'X-Emby-Token': server.accessToken },
+        headers: { 'X-Emby-Token': creds.accessToken },
         signal: searchController.signal,
       })
       clearTimeout(searchTimeout)
@@ -232,13 +232,13 @@ export async function POST(request: NextRequest) {
     // If Jellyfin search returned too few results, also fetch some popular items
     if (rawItems.length < 5) {
       try {
-        const popularUrl = `${server.serverUrl}/Items?UserId=${server.userId}&Recursive=true&IncludeItemTypes=Movie,Series,Audio,AudioBook&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=CommunityRating&SortOrder=Descending&Limit=100`
+        const popularUrl = `${creds.serverUrl}/Items?UserId=${creds.userId}&Recursive=true&IncludeItemTypes=Movie,Series,Audio,AudioBook&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=CommunityRating&SortOrder=Descending&Limit=100`
 
         const popularController = new AbortController()
         const popularTimeout = setTimeout(() => popularController.abort(), 10000)
 
         const popularRes = await fetch(popularUrl, {
-          headers: { 'X-Emby-Token': server.accessToken },
+          headers: { 'X-Emby-Token': creds.accessToken },
           signal: popularController.signal,
         })
         clearTimeout(popularTimeout)

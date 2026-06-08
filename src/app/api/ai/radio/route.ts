@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 
@@ -191,8 +191,8 @@ export async function POST(request: NextRequest) {
     }
 
     // 1. Get Jellyfin credentials
-    const server = await db.jellyfinServer.findFirst()
-    if (!server || !server.connected) {
+    const creds = await getJellyfinCredentials()
+    if (!creds || !creds.connected) {
       return NextResponse.json(
         { error: 'Not connected to Jellyfin' },
         { status: 400 }
@@ -205,13 +205,13 @@ export async function POST(request: NextRequest) {
 
     // First try: Jellyfin built-in search (fast)
     try {
-      const searchUrl = `${server.serverUrl}/Items?UserId=${server.userId}&SearchTerm=${encodeURIComponent(searchQuery)}&Recursive=true&IncludeItemTypes=Audio&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,MediaSources,ChildCount,AlbumArtist,Artists&SortBy=SortName&SortOrder=Ascending&Limit=200`
+      const searchUrl = `${creds.serverUrl}/Items?UserId=${creds.userId}&SearchTerm=${encodeURIComponent(searchQuery)}&Recursive=true&IncludeItemTypes=Audio&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,MediaSources,ChildCount,AlbumArtist,Artists&SortBy=SortName&SortOrder=Ascending&Limit=200`
 
       const searchController = new AbortController()
       const searchTimeout = setTimeout(() => searchController.abort(), 10000)
 
       const searchRes = await fetch(searchUrl, {
-        headers: { 'X-Emby-Token': server.accessToken },
+        headers: { 'X-Emby-Token': creds.accessToken },
         signal: searchController.signal,
       })
       clearTimeout(searchTimeout)
@@ -227,13 +227,13 @@ export async function POST(request: NextRequest) {
     // If search returned too few, also fetch popular audio
     if (rawTracks.length < 20) {
       try {
-        const allUrl = `${server.serverUrl}/Items?UserId=${server.userId}&Recursive=true&IncludeItemTypes=Audio&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,MediaSources,ChildCount,AlbumArtist,Artists&SortBy=CommunityRating&SortOrder=Descending&Limit=300`
+        const allUrl = `${creds.serverUrl}/Items?UserId=${creds.userId}&Recursive=true&IncludeItemTypes=Audio&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,MediaSources,ChildCount,AlbumArtist,Artists&SortBy=CommunityRating&SortOrder=Descending&Limit=300`
 
         const allController = new AbortController()
         const allTimeout = setTimeout(() => allController.abort(), 10000)
 
         const allRes = await fetch(allUrl, {
-          headers: { 'X-Emby-Token': server.accessToken },
+          headers: { 'X-Emby-Token': creds.accessToken },
           signal: allController.signal,
         })
         clearTimeout(allTimeout)

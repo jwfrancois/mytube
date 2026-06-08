@@ -1,5 +1,5 @@
-import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 
 export async function GET(
   request: NextRequest,
@@ -7,9 +7,9 @@ export async function GET(
 ) {
   try {
     const { itemId } = await params
-    const server = await db.jellyfinServer.findFirst()
+    const creds = await getJellyfinCredentials()
 
-    if (!server || !server.connected) {
+    if (!creds || !creds.connected) {
       return NextResponse.json({ error: 'Not connected to Jellyfin' }, { status: 400 })
     }
 
@@ -17,14 +17,14 @@ export async function GET(
     const tag = searchParams.get('tag')
     const maxWidth = searchParams.get('maxWidth') || '480'
 
-    const url = `${server.serverUrl}/Items/${itemId}/Images/Primary${tag ? `?tag=${tag}&maxWidth=${maxWidth}` : `?maxWidth=${maxWidth}`}`
+    const url = `${creds.serverUrl}/Items/${itemId}/Images/Primary${tag ? `?tag=${tag}&maxWidth=${maxWidth}` : `?maxWidth=${maxWidth}`}`
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 8000)
 
     const res = await fetch(url, {
       headers: {
-        'X-Emby-Token': server.accessToken,
+        'X-Emby-Token': creds.accessToken,
       },
       signal: controller.signal,
     })

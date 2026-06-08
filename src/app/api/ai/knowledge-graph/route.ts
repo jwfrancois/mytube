@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
 
 interface JellyfinItem {
@@ -112,8 +112,8 @@ export async function GET(request: NextRequest) {
     }
 
     // 1. Get Jellyfin credentials
-    const server = await db.jellyfinServer.findFirst()
-    if (!server || !server.connected) {
+    const creds = await getJellyfinCredentials()
+    if (!creds || !creds.connected) {
       return NextResponse.json(
         { error: 'Not connected to Jellyfin' },
         { status: 400 }
@@ -126,9 +126,9 @@ export async function GET(request: NextRequest) {
       const viewsController = new AbortController()
       const viewsTimeout = setTimeout(() => viewsController.abort(), 5000)
       const viewsRes = await fetch(
-        `${server.serverUrl}/Users/${server.userId}/Views`,
+        `${creds.serverUrl}/Users/${creds.userId}/Views`,
         {
-          headers: { 'X-Emby-Token': server.accessToken },
+          headers: { 'X-Emby-Token': creds.accessToken },
           signal: viewsController.signal,
         }
       )
@@ -144,11 +144,11 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Fetch the central item's details with People
-    const detailUrl = `${server.serverUrl}/Items?Ids=${itemId}&UserId=${server.userId}&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People,AlbumArtist,Artists`
+    const detailUrl = `${creds.serverUrl}/Items?Ids=${itemId}&UserId=${creds.userId}&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People,AlbumArtist,Artists`
     const detailController = new AbortController()
     const detailTimeout = setTimeout(() => detailController.abort(), 10000)
     const detailRes = await fetch(detailUrl, {
-      headers: { 'X-Emby-Token': server.accessToken },
+      headers: { 'X-Emby-Token': creds.accessToken },
       signal: detailController.signal,
     })
     clearTimeout(detailTimeout)
@@ -190,11 +190,11 @@ export async function GET(request: NextRequest) {
     // 6. Fetch all items for related content matching
     let allItems: JellyfinItem[] = []
     try {
-      const allUrl = `${server.serverUrl}/Items?UserId=${server.userId}&Recursive=true&IncludeItemTypes=Movie,Series,Audio,AudioBook&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People,AlbumArtist,Artists&SortBy=SortName&SortOrder=Ascending&Limit=500`
+      const allUrl = `${creds.serverUrl}/Items?UserId=${creds.userId}&Recursive=true&IncludeItemTypes=Movie,Series,Audio,AudioBook&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People,AlbumArtist,Artists&SortBy=SortName&SortOrder=Ascending&Limit=500`
       const allController = new AbortController()
       const allTimeout = setTimeout(() => allController.abort(), 15000)
       const allRes = await fetch(allUrl, {
-        headers: { 'X-Emby-Token': server.accessToken },
+        headers: { 'X-Emby-Token': creds.accessToken },
         signal: allController.signal,
       })
       clearTimeout(allTimeout)

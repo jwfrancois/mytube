@@ -1,5 +1,5 @@
-import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 
 function formatRuntime(ticks: number | null): string {
   if (!ticks) return ''
@@ -22,9 +22,9 @@ export async function GET(
 ) {
   try {
     const { itemId } = await params
-    const server = await db.jellyfinServer.findFirst()
+    const creds = await getJellyfinCredentials()
 
-    if (!server || !server.connected) {
+    if (!creds || !creds.connected) {
       return NextResponse.json({ error: 'Not connected to Jellyfin' }, { status: 400 })
     }
 
@@ -32,14 +32,14 @@ export async function GET(
     const seasonId = searchParams.get('seasonId')
 
     // Fetch item details with extended fields
-    const detailUrl = `${server.serverUrl}/Items?Ids=${itemId}&UserId=${server.userId}&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,CriticRating,OfficialRating,MediaSources,ChildCount,People,ProviderIds,Status,AirDays,ProductionLocations,ExternalUrls,RecursiveItemCount,TotalSeasonCount,CumulativeRunTimeTicks`
+    const detailUrl = `${creds.serverUrl}/Items?Ids=${itemId}&UserId=${creds.userId}&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,CriticRating,OfficialRating,MediaSources,ChildCount,People,ProviderIds,Status,AirDays,ProductionLocations,ExternalUrls,RecursiveItemCount,TotalSeasonCount,CumulativeRunTimeTicks`
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 10000)
 
     const detailRes = await fetch(detailUrl, {
       headers: {
-        'X-Emby-Token': server.accessToken,
+        'X-Emby-Token': creds.accessToken,
       },
       signal: controller.signal,
     })
@@ -192,13 +192,13 @@ export async function GET(
     // For Series type, fetch seasons
     if (item.Type === 'Series') {
       try {
-        const seasonsUrl = `${server.serverUrl}/Shows/${itemId}/Seasons?UserId=${server.userId}&Fields=PrimaryImageAspectRatio,Overview,ChildCount`
+        const seasonsUrl = `${creds.serverUrl}/Shows/${itemId}/Seasons?UserId=${creds.userId}&Fields=PrimaryImageAspectRatio,Overview,ChildCount`
         const seasonsController = new AbortController()
         const seasonsTimeout = setTimeout(() => seasonsController.abort(), 10000)
 
         const seasonsRes = await fetch(seasonsUrl, {
           headers: {
-            'X-Emby-Token': server.accessToken,
+            'X-Emby-Token': creds.accessToken,
           },
           signal: seasonsController.signal,
         })
@@ -229,13 +229,13 @@ export async function GET(
           // Fetch episodes for the first season by default (or the specified season)
           const targetSeasonId = seasonId || (result.seasons.length > 0 ? result.seasons[0].id : null)
           if (targetSeasonId) {
-            const episodesUrl = `${server.serverUrl}/Shows/${itemId}/Episodes?SeasonId=${targetSeasonId}&UserId=${server.userId}&Fields=PrimaryImageAspectRatio,Overview,MediaSources,RunTimeTicks`
+            const episodesUrl = `${creds.serverUrl}/Shows/${itemId}/Episodes?SeasonId=${targetSeasonId}&UserId=${creds.userId}&Fields=PrimaryImageAspectRatio,Overview,MediaSources,RunTimeTicks`
             const episodesController = new AbortController()
             const episodesTimeout = setTimeout(() => episodesController.abort(), 10000)
 
             const episodesRes = await fetch(episodesUrl, {
               headers: {
-                'X-Emby-Token': server.accessToken,
+                'X-Emby-Token': creds.accessToken,
               },
               signal: episodesController.signal,
             })
@@ -280,13 +280,13 @@ export async function GET(
       try {
         const episodeOffset = parseInt(searchParams.get('episodeOffset') || '0')
         const episodeLimit = Math.min(parseInt(searchParams.get('episodeLimit') || '50'), 200)
-        const childrenUrl = `${server.serverUrl}/Items?ParentId=${itemId}&UserId=${server.userId}&IncludeItemTypes=Audio&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,RunTimeTicks,ProductionYear,MediaSources,PremiereDate,IndexNumber,Artists,AlbumArtist&SortBy=SortName&SortOrder=Ascending&Limit=${episodeLimit}&StartIndex=${episodeOffset}`
+        const childrenUrl = `${creds.serverUrl}/Items?ParentId=${itemId}&UserId=${creds.userId}&IncludeItemTypes=Audio&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,RunTimeTicks,ProductionYear,MediaSources,PremiereDate,IndexNumber,Artists,AlbumArtist&SortBy=SortName&SortOrder=Ascending&Limit=${episodeLimit}&StartIndex=${episodeOffset}`
         const childrenController = new AbortController()
         const childrenTimeout = setTimeout(() => childrenController.abort(), 10000)
 
         const childrenRes = await fetch(childrenUrl, {
           headers: {
-            'X-Emby-Token': server.accessToken,
+            'X-Emby-Token': creds.accessToken,
           },
           signal: childrenController.signal,
         })
@@ -327,13 +327,13 @@ export async function GET(
     // For BoxSet type, fetch children (movies in the collection)
     if (item.Type === 'BoxSet') {
       try {
-        const childrenUrl = `${server.serverUrl}/Items?ParentId=${itemId}&UserId=${server.userId}&Fields=PrimaryImageAspectRatio,Overview,Genres,RunTimeTicks,ProductionYear,CommunityRating,MediaSources,ProviderIds&SortBy=SortName&SortOrder=Ascending`
+        const childrenUrl = `${creds.serverUrl}/Items?ParentId=${itemId}&UserId=${creds.userId}&Fields=PrimaryImageAspectRatio,Overview,Genres,RunTimeTicks,ProductionYear,CommunityRating,MediaSources,ProviderIds&SortBy=SortName&SortOrder=Ascending`
         const childrenController = new AbortController()
         const childrenTimeout = setTimeout(() => childrenController.abort(), 10000)
 
         const childrenRes = await fetch(childrenUrl, {
           headers: {
-            'X-Emby-Token': server.accessToken,
+            'X-Emby-Token': creds.accessToken,
           },
           signal: childrenController.signal,
         })

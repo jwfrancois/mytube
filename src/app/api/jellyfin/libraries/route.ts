@@ -1,24 +1,30 @@
-import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
+import { mediaCache } from '@/lib/media-cache'
 
 export async function GET(request: NextRequest) {
   try {
-    const server = await db.jellyfinServer.findFirst()
+    const creds = await getJellyfinCredentials()
 
-    if (!server || !server.connected) {
+    if (!creds || !creds.connected) {
       return NextResponse.json({ error: 'Not connected to Jellyfin' }, { status: 400 })
     }
 
     const { searchParams } = new URL(request.url)
     const parentId = searchParams.get('parentId')
 
+    // Check cache
+    const cacheKey = `libraries-${parentId || 'root'}`
+    const cached = await mediaCache.get(cacheKey)
+    if (cached) {
+      return NextResponse.json(cached)
+    }
+
     let url: string
     if (parentId) {
-      // Get items within a specific library/parent
-      url = `${server.serverUrl}/Items?ParentId=${parentId}&UserId=${server.userId}&Recursive=false&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=200`
+      url = `${creds.serverUrl}/Items?ParentId=${parentId}&UserId=${creds.userId}&Recursive=false&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=200`
     } else {
-      // Get top-level libraries/views using the correct Jellyfin endpoint
-      url = `${server.serverUrl}/Users/${server.userId}/Views`
+      url = `${creds.serverUrl}/Users/${creds.userId}/Views`
     }
 
     const controller = new AbortController()
@@ -26,7 +32,7 @@ export async function GET(request: NextRequest) {
 
     const res = await fetch(url, {
       headers: {
-        'X-Emby-Token': server.accessToken,
+        'X-Emby-Token': creds.accessToken,
       },
       signal: controller.signal,
     })
@@ -61,7 +67,6 @@ export async function GET(request: NextRequest) {
         type = 'AUDIOBOOK'
       }
 
-      // Calculate duration from ticks
       let duration = ''
       if (item.RunTimeTicks) {
         const totalMinutes = Math.floor(item.RunTimeTicks / 600000000)
@@ -86,7 +91,7 @@ export async function GET(request: NextRequest) {
         releaseYear: item.ProductionYear || 0,
         artist: item.Studios?.[0]?.Name || item.AlbumArtist || '',
         views: 0,
-        channel: item.OfficialRating || server.name,
+        channel: item.OfficialRating || 'Jellyfin',
         isJellyfin: true,
         jellyfinId: item.Id,
         itemType: item.Type,
@@ -98,7 +103,12 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ items, totalRecordCount: data.TotalRecordCount })
+    const result = { items, totalRecordCount: data.TotalRecordCount }
+
+    // Cache for 5 minutes (libraries change rarely)
+    await mediaCache.set(cacheKey, result, 300)
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Jellyfin libraries error:', error)
     return NextResponse.json({ error: 'Failed to fetch libraries' }, { status: 500 })

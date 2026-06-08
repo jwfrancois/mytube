@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { BUILT_IN_CHANNELS, getChannelsByCategory, searchChannels, LIVE_TV_CATEGORIES } from '@/lib/livetv-channels'
 import { db } from '@/lib/db'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,9 +16,9 @@ export async function GET(request: NextRequest) {
     // Fetch Jellyfin Live TV channels if connected and requested
     if (includeJellyfin) {
       try {
-        const server = await db.jellyfinServer.findFirst()
-        if (server && server.connected) {
-          const jellyfinChannels = await fetchJellyfinLiveTVChannels(server.serverUrl, server.accessToken, server.userId)
+        const creds = await getJellyfinCredentials()
+        if (creds && creds.connected) {
+          const jellyfinChannels = await fetchJellyfinLiveTVChannels(creds.serverUrl, creds.accessToken, creds.userId)
           channels = [...channels, ...jellyfinChannels]
         }
       } catch (err) {

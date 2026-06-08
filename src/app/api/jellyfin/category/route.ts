@@ -1,19 +1,15 @@
-import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
+import { mediaCache } from '@/lib/media-cache'
 
 /**
  * Fetch Jellyfin items by media category type.
- * Maps our MediaType to Jellyfin library CollectionType and fetches items recursively.
+ * Uses DB-backed caching instead of in-memory Maps for Vercel serverless compatibility.
  *
  * Query params:
  *   type - MOVIE | TV_SHOW | MUSIC | PODCAST | AUDIOBOOK | COLLECTION
  *   limit - max items to return (default 100)
  */
-
-// In-memory cache to reduce external Jellyfin API calls
-// TTL: 2 minutes — balances freshness with server stability
-const categoryCache = new Map<string, { data: any; expires: number }>()
-const CACHE_TTL = 2 * 60 * 1000 // 2 minutes
 
 const TYPE_TO_COLLECTION_TYPE: Record<string, string[]> = {
   MOVIE: ['movies', 'homevideos'],
@@ -25,16 +21,15 @@ const TYPE_TO_COLLECTION_TYPE: Record<string, string[]> = {
 }
 
 // Library name patterns to match for each type (case-insensitive)
-// When a collectionType matches multiple types, use name patterns to disambiguate
 const TYPE_TO_NAME_PATTERNS: Record<string, RegExp[]> = {
   PODCAST: [/podcast/i, /talk/i, /radio/i, /show/i],
-  MUSIC: [], // No name filter — matches any library with 'music' collectionType not matched by other patterns
+  MUSIC: [], // No name filter
   COLLECTION: [/collection/i],
 }
 
-// Name patterns to EXCLUDE for a type (libraries that match collectionType but should be excluded)
+// Name patterns to EXCLUDE for a type
 const TYPE_TO_EXCLUDE_NAME_PATTERNS: Record<string, RegExp[]> = {
-  MUSIC: [/podcast/i, /talk/i, /radio/i], // Exclude podcast-like libraries from Music category
+  MUSIC: [/podcast/i, /talk/i, /radio/i],
 }
 
 const TYPE_TO_ITEM_TYPES: Record<string, string> = {
@@ -48,9 +43,9 @@ const TYPE_TO_ITEM_TYPES: Record<string, string> = {
 
 export async function GET(request: NextRequest) {
   try {
-    const server = await db.jellyfinServer.findFirst()
+    const creds = await getJellyfinCredentials()
 
-    if (!server || !server.connected) {
+    if (!creds || !creds.connected) {
       return NextResponse.json({ items: [], totalRecordCount: 0 })
     }
 
@@ -62,11 +57,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ items: [], totalRecordCount: 0 })
     }
 
-    // Check cache first
-    const cacheKey = `${type}-${limit}`
-    const cached = categoryCache.get(cacheKey)
-    if (cached && cached.expires > Date.now()) {
-      return NextResponse.json(cached.data)
+    // Check DB-backed cache first
+    const cacheKey = `category-${type}-${limit}`
+    const cached = await mediaCache.get(cacheKey)
+    if (cached) {
+      return NextResponse.json(cached)
     }
 
     const collectionTypes = TYPE_TO_COLLECTION_TYPE[type]
@@ -80,8 +75,8 @@ export async function GET(request: NextRequest) {
     const viewsController = new AbortController()
     const viewsTimeout = setTimeout(() => viewsController.abort(), 10000)
 
-    const viewsRes = await fetch(`${server.serverUrl}/Users/${server.userId}/Views`, {
-      headers: { 'X-Emby-Token': server.accessToken },
+    const viewsRes = await fetch(`${creds.serverUrl}/Users/${creds.userId}/Views`, {
+      headers: { 'X-Emby-Token': creds.accessToken },
       signal: viewsController.signal,
     })
     clearTimeout(viewsTimeout)
@@ -94,30 +89,23 @@ export async function GET(request: NextRequest) {
     const libraries = (viewsData.Items || []) as any[]
 
     // Find libraries matching our type
-    // Strategy: match by collectionType first, then by name pattern for disambiguation
-    // Also: for PODCAST, any library with "podcast" in the name matches regardless of CollectionType
     const namePatterns = TYPE_TO_NAME_PATTERNS[type] || []
     const excludePatterns = TYPE_TO_EXCLUDE_NAME_PATTERNS[type] || []
     const matchingLibraries = libraries.filter((lib: any) => {
       const libCollectionType = lib.CollectionType || ''
       const libName = lib.Name || ''
 
-      // Exclude libraries that match exclude patterns
       if (excludePatterns.length > 0 && excludePatterns.some(pattern => pattern.test(libName))) {
         return false
       }
 
-      // Match by collectionType
       if (collectionTypes.includes(libCollectionType)) {
-        // For types with name patterns, also require the name to match
-        // (e.g., 'music' collectionType could be Music or Podcasts)
         if (namePatterns.length > 0) {
           return namePatterns.some(pattern => pattern.test(libName))
         }
         return true
       }
 
-      // For PODCAST: also match any library with "podcast" in the name regardless of CollectionType
       if (type === 'PODCAST' && /podcast/i.test(libName)) {
         return true
       }
@@ -126,24 +114,20 @@ export async function GET(request: NextRequest) {
     })
 
     if (matchingLibraries.length === 0 && type === 'PODCAST') {
-      // Fallback: No dedicated podcast library found.
-      // Search ALL libraries for podcast-like content (items with "podcast" in genres or name)
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 15000)
         const commonFields = 'PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount'
 
-        // Search across all items for podcast-like content
-        const url = `${server.serverUrl}/Items?UserId=${server.userId}&IncludeItemTypes=Series,MusicAlbum,Audio&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+        const url = `${creds.serverUrl}/Items?UserId=${creds.userId}&IncludeItemTypes=Series,MusicAlbum,Audio&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         const res = await fetch(url, {
-          headers: { 'X-Emby-Token': server.accessToken },
+          headers: { 'X-Emby-Token': creds.accessToken },
           signal: controller.signal,
         })
         clearTimeout(timeoutId)
 
         if (res.ok) {
           const data = await res.json()
-          // Filter items that look like podcasts (by genre or name)
           const podcastItems = (data.Items || []).filter((item: any) => {
             const genres = (item.Genres || []).join(' ').toLowerCase()
             const name = (item.Name || '').toLowerCase()
@@ -153,7 +137,9 @@ export async function GET(request: NextRequest) {
           const items = podcastItems.map((item: any) =>
             mapJellyfinItem(item, type, 'podcasts', 'Podcasts')
           )
-          return NextResponse.json({ items, totalRecordCount: items.length })
+          const result = { items, totalRecordCount: items.length }
+          await mediaCache.set(cacheKey, result, 120)
+          return NextResponse.json(result)
         }
       } catch (err) {
         console.error('Podcast fallback search error:', err)
@@ -176,27 +162,23 @@ export async function GET(request: NextRequest) {
         const commonFields = 'PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount'
 
         if (type === 'MUSIC') {
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=MusicAlbum&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${creds.serverUrl}/Items?ParentId=${lib.Id}&UserId=${creds.userId}&IncludeItemTypes=MusicAlbum&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'PODCAST') {
-          // For podcasts, the library uses 'music' collectionType
-          // Podcast shows are stored as MusicAlbum in music-type libraries.
-          // Only request MusicAlbum type for performance (no Series/LiveTv needed for typical podcasts)
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=MusicAlbum&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${creds.serverUrl}/Items?ParentId=${lib.Id}&UserId=${creds.userId}&IncludeItemTypes=MusicAlbum&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'TV_SHOW') {
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Series&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${creds.serverUrl}/Items?ParentId=${lib.Id}&UserId=${creds.userId}&IncludeItemTypes=Series&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'MOVIE') {
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=Movie&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${creds.serverUrl}/Items?ParentId=${lib.Id}&UserId=${creds.userId}&IncludeItemTypes=Movie&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'AUDIOBOOK') {
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=AudioBook&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${creds.serverUrl}/Items?ParentId=${lib.Id}&UserId=${creds.userId}&IncludeItemTypes=AudioBook&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else if (type === 'COLLECTION') {
-          // BoxSet (movie collections) — can exist at the root level or inside libraries
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&IncludeItemTypes=BoxSet&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${creds.serverUrl}/Items?ParentId=${lib.Id}&UserId=${creds.userId}&IncludeItemTypes=BoxSet&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         } else {
-          url = `${server.serverUrl}/Items?ParentId=${lib.Id}&UserId=${server.userId}&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+          url = `${creds.serverUrl}/Items?ParentId=${lib.Id}&UserId=${creds.userId}&Recursive=true&Fields=${commonFields}&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         }
 
         const res = await fetch(url, {
-          headers: { 'X-Emby-Token': server.accessToken },
+          headers: { 'X-Emby-Token': creds.accessToken },
           signal: controller.signal,
         })
 
@@ -214,16 +196,15 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // For COLLECTION type: also try fetching BoxSets at the root level (no ParentId filter)
-    // Some Jellyfin setups have BoxSets that don't belong to a specific library
+    // For COLLECTION type: also try fetching BoxSets at the root level
     if (type === 'COLLECTION') {
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 15000)
 
-        const url = `${server.serverUrl}/Items?UserId=${server.userId}&IncludeItemTypes=BoxSet&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount,MediaSources&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
+        const url = `${creds.serverUrl}/Items?UserId=${creds.userId}&IncludeItemTypes=BoxSet&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,ChildCount,MediaSources&SortBy=SortName&SortOrder=Ascending&Limit=${limit}`
         const res = await fetch(url, {
-          headers: { 'X-Emby-Token': server.accessToken },
+          headers: { 'X-Emby-Token': creds.accessToken },
           signal: controller.signal,
         })
 
@@ -234,7 +215,6 @@ export async function GET(request: NextRequest) {
           const rootItems = (data.Items || []).map((item: any) =>
             mapJellyfinItem(item, type, 'boxsets', '')
           )
-          // Deduplicate: only add items not already in allItems
           const existingIds = new Set(allItems.map(i => i.jellyfinId))
           for (const item of rootItems) {
             if (!existingIds.has(item.jellyfinId)) {
@@ -251,10 +231,15 @@ export async function GET(request: NextRequest) {
       items: allItems,
       totalRecordCount: allItems.length,
     }
-    
-    // Cache the result
-    categoryCache.set(cacheKey, { data: result, expires: Date.now() + CACHE_TTL })
-    
+
+    // Cache in DB for 2 minutes (120 seconds)
+    await mediaCache.set(cacheKey, result, 120)
+
+    // Clean expired cache entries periodically (every 10th request approximately)
+    if (Math.random() < 0.1) {
+      mediaCache.cleanExpired().catch(() => {})
+    }
+
     return NextResponse.json(result)
   } catch (error) {
     console.error('Jellyfin category error:', error)
@@ -263,10 +248,7 @@ export async function GET(request: NextRequest) {
 }
 
 function mapJellyfinItem(item: any, requestType: string, collectionType: string, libraryName: string = '') {
-  // Determine the proper type for this item
   let type = requestType
-  // Override for specific item types in specific libraries
-  // Check both collectionType and library name for podcast detection
   const isPodcastLibrary = collectionType === 'podcasts' || /podcast/i.test(libraryName)
   if (isPodcastLibrary) {
     if (item.Type === 'Series') type = 'PODCAST'

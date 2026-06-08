@@ -11,7 +11,7 @@ model Media {
   id          String   @id @default(cuid())
   title       String
   description String   @default("")
-  type        String
+  type        String   // MOVIE, TV_SHOW, MUSIC, PODCAST, AUDIOBOOK
   genre       String   @default("")
   thumbnail   String   @default("")
   videoUrl    String   @default("")

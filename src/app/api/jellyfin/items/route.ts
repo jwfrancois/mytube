@@ -1,11 +1,12 @@
-import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
+import { mediaCache } from '@/lib/media-cache'
 
 export async function GET(request: NextRequest) {
   try {
-    const server = await db.jellyfinServer.findFirst()
+    const creds = await getJellyfinCredentials()
 
-    if (!server || !server.connected) {
+    if (!creds || !creds.connected) {
       return NextResponse.json({ error: 'Not connected to Jellyfin' }, { status: 400 })
     }
 
@@ -14,12 +15,19 @@ export async function GET(request: NextRequest) {
     const searchTerm = searchParams.get('search')
     const parentCollectionType = searchParams.get('collectionType') || ''
 
+    // Build cache key
+    const cacheKey = `items-${parentId || ''}-${searchTerm || ''}-${parentCollectionType}`
+    const cached = await mediaCache.get(cacheKey)
+    if (cached) {
+      return NextResponse.json(cached)
+    }
+
     let url: string
 
     if (searchTerm) {
-      url = `${server.serverUrl}/Items?UserId=${server.userId}&SearchTerm=${encodeURIComponent(searchTerm)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,LiveTvChannel,LiveTvProgram&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People&SortBy=SortName&SortOrder=Ascending&Limit=100`
+      url = `${creds.serverUrl}/Items?UserId=${creds.userId}&SearchTerm=${encodeURIComponent(searchTerm)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,LiveTvChannel,LiveTvProgram&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People&SortBy=SortName&SortOrder=Ascending&Limit=100`
     } else if (parentId) {
-      url = `${server.serverUrl}/Items?ParentId=${parentId}&UserId=${server.userId}&Recursive=false&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People&SortBy=SortName&SortOrder=Ascending&Limit=200`
+      url = `${creds.serverUrl}/Items?ParentId=${parentId}&UserId=${creds.userId}&Recursive=false&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount,People&SortBy=SortName&SortOrder=Ascending&Limit=200`
     } else {
       return NextResponse.json({ items: [] })
     }
@@ -29,7 +37,7 @@ export async function GET(request: NextRequest) {
 
     const res = await fetch(url, {
       headers: {
-        'X-Emby-Token': server.accessToken,
+        'X-Emby-Token': creds.accessToken,
       },
       signal: controller.signal,
     })
@@ -45,15 +53,12 @@ export async function GET(request: NextRequest) {
     const items = (data.Items || []).map((item: any) => {
       let type = 'MOVIE'
       if (item.Type === 'Series' || item.Type === 'Season' || item.Type === 'Episode') {
-        // In a podcast library, Series are podcast shows
         type = parentCollectionType === 'podcasts' ? 'PODCAST' : 'TV_SHOW'
       } else if (item.Type === 'AudioBook') {
         type = 'AUDIOBOOK'
       } else if (item.Type === 'LiveTvChannel' || item.Type === 'LiveTvProgram') {
         type = 'PODCAST'
       } else if (item.Type === 'Audio' || item.Type === 'MusicAlbum' || item.Type === 'MusicArtist') {
-        // In a podcast library, Audio items are podcast episodes
-        // In a books library, Audio items are audiobooks
         if (parentCollectionType === 'podcasts') {
           type = 'PODCAST'
         } else if (parentCollectionType === 'books') {
@@ -87,7 +92,7 @@ export async function GET(request: NextRequest) {
         releaseYear: item.ProductionYear || 0,
         artist: item.Studios?.[0]?.Name || item.AlbumArtist || item.Artists?.join(', ') || '',
         views: 0,
-        channel: item.OfficialRating || server.name,
+        channel: item.OfficialRating || 'Jellyfin',
         isJellyfin: true,
         jellyfinId: item.Id,
         mediaSourceId: item.MediaSources?.[0]?.Id || '',
@@ -102,7 +107,12 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ items, totalRecordCount: data.TotalRecordCount })
+    const result = { items, totalRecordCount: data.TotalRecordCount }
+
+    // Cache for 2 minutes (shorter TTL for browsed items since they change more)
+    await mediaCache.set(cacheKey, result, 120)
+
+    return NextResponse.json(result)
   } catch (error) {
     console.error('Jellyfin items error:', error)
     return NextResponse.json({ error: 'Failed to fetch items' }, { status: 500 })

@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -34,15 +35,15 @@ export async function GET(request: NextRequest) {
     // Also search Jellyfin if connected
     let jellyfinItems: any[] = []
     try {
-      const server = await db.jellyfinServer.findFirst()
-      if (server && server.connected) {
+      const creds = await getJellyfinCredentials()
+      if (creds && creds.connected) {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 10000)
 
         const jellyfinRes = await fetch(
-          `${server.serverUrl}/Items?UserId=${server.userId}&SearchTerm=${encodeURIComponent(q)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,MusicAlbum,LiveTvChannel,LiveTvProgram,BoxSet&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=30`,
+          `${creds.serverUrl}/Items?UserId=${creds.userId}&SearchTerm=${encodeURIComponent(q)}&IncludeItemTypes=Movie,Series,Audio,Episode,AudioBook,MusicAlbum,LiveTvChannel,LiveTvProgram,BoxSet&Recursive=true&Fields=PrimaryImageAspectRatio,Overview,Genres,Studios,RunTimeTicks,ProductionYear,CommunityRating,OfficialRating,MediaSources,ChildCount&SortBy=SortName&SortOrder=Ascending&Limit=30`,
           {
-            headers: { 'X-Emby-Token': server.accessToken },
+            headers: { 'X-Emby-Token': creds.accessToken },
             signal: controller.signal,
           }
         )
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
         if (jellyfinRes.ok) {
           const jellyfinData = await jellyfinRes.json()
           // Get libraries to determine parent collection types for podcast detection
-          const libraries = await getLibraries(server.serverUrl, server.userId, server.accessToken)
+          const libraries = await getLibraries(creds.serverUrl, creds.userId, creds.accessToken)
 
           jellyfinItems = (jellyfinData.Items || []).map((item: any) => {
             // Determine the parent library for this item to check its collection type

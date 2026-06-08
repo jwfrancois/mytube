@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
 import ZAI from 'z-ai-web-dev-sdk'
 
@@ -81,8 +81,8 @@ export async function POST(request: NextRequest) {
     const enableSpoilerProtection = spoilerProtection !== false // default true
 
     // 1. Get Jellyfin credentials
-    const server = await db.jellyfinServer.findFirst()
-    if (!server || !server.connected) {
+    const creds = await getJellyfinCredentials()
+    if (!creds || !creds.connected) {
       return NextResponse.json(
         { error: 'Not connected to Jellyfin' },
         { status: 400 }
@@ -92,13 +92,13 @@ export async function POST(request: NextRequest) {
     // 2. Fetch item details from Jellyfin
     let itemDetail: JellyfinItemDetail | null = null
     try {
-      const detailUrl = `${server.serverUrl}/Users/${server.userId}/Items/${itemId}?Fields=Overview,People,Genres,Studios,ProductionYear,CommunityRating,OfficialRating`
+      const detailUrl = `${creds.serverUrl}/Users/${creds.userId}/Items/${itemId}?Fields=Overview,People,Genres,Studios,ProductionYear,CommunityRating,OfficialRating`
 
       const detailController = new AbortController()
       const detailTimeout = setTimeout(() => detailController.abort(), 10000)
 
       const detailRes = await fetch(detailUrl, {
-        headers: { 'X-Emby-Token': server.accessToken },
+        headers: { 'X-Emby-Token': creds.accessToken },
         signal: detailController.signal,
       })
       clearTimeout(detailTimeout)

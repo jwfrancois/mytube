@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { getChannelById, BUILT_IN_CHANNELS } from '@/lib/livetv-channels'
+import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 
 export async function GET(
   request: NextRequest,
@@ -242,18 +243,18 @@ async function handleHDHomerunStream(channelNumber: string, format: string, clie
  */
 async function handleJellyfinLiveTV(channelId: string, format: string): Promise<NextResponse> {
   try {
-    const server = await db.jellyfinServer.findFirst()
-    if (!server || !server.connected) {
+    const creds = await getJellyfinCredentials()
+    if (!creds || !creds.connected) {
       return NextResponse.json({ error: 'Not connected to Jellyfin' }, { status: 400 })
     }
 
     // Get the channel's stream URL from Jellyfin
-    const deviceId = `mytube-server-${server.id}`
-    const streamUrl = `${server.serverUrl}/LiveTv/LiveStreamFiles/${channelId}/stream.ts?api_key=${server.accessToken}&DeviceId=${deviceId}`
+    const deviceId = `mytube-server-${creds.id}`
+    const streamUrl = `${creds.serverUrl}/LiveTv/LiveStreamFiles/${channelId}/stream.ts?api_key=${creds.accessToken}&DeviceId=${deviceId}`
 
     if (format === 'm3u8') {
       // Try to get an HLS stream from Jellyfin
-      const hlsUrl = `${server.serverUrl}/Videos/${channelId}/stream.m3u8?api_key=${server.accessToken}&DeviceId=${deviceId}&MediaSourceId=${channelId}`
+      const hlsUrl = `${creds.serverUrl}/Videos/${channelId}/stream.m3u8?api_key=${creds.accessToken}&DeviceId=${deviceId}&MediaSourceId=${channelId}`
       
       // Proxy through our Jellyfin HLS proxy
       const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`

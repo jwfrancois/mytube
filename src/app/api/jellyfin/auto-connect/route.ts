@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
+import { mediaCache } from '@/lib/media-cache'
 
 export async function POST() {
   try {
@@ -26,7 +27,7 @@ export async function POST() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Emby-Authorization': `Emby Client="MyTube", Device="WebBrowser", DeviceId="mytube-${Date.now()}", Version="1.0.0"`,
+        'X-Emby-Authorization': `Emby Client="MyTube", Device="WebBrowser", DeviceId="mytube-auto", Version="1.0.0"`,
       },
       body: JSON.stringify({ Username: username, Pw: password }),
       signal: controller.signal,
@@ -63,7 +64,10 @@ export async function POST() {
       },
     })
 
-    // Known server ID constant (not stored in DB to avoid schema migration)
+    // Clear cached media data on new connection
+    await mediaCache.clear()
+
+    // Known server ID constant
     const JELLYFIN_SERVER_ID = '363ac50118644e63bddcd34c6dc063a9'
 
     return NextResponse.json({
