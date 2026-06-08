@@ -428,12 +428,18 @@ export function AudioPlayerBar() {
 
   useEffect(() => {
     const unsub1 = useAppStore.subscribe(
-      (s) => s.audioCurrentTime,
-      (time) => setReactiveTime(time)
+      (state, prevState) => {
+        if (state.audioCurrentTime !== prevState.audioCurrentTime) {
+          setReactiveTime(state.audioCurrentTime)
+        }
+      }
     )
     const unsub2 = useAppStore.subscribe(
-      (s) => s.audioDuration,
-      (d) => setReactiveDuration(d)
+      (state, prevState) => {
+        if (state.audioDuration !== prevState.audioDuration) {
+          setReactiveDuration(state.audioDuration)
+        }
+      }
     )
     return () => { unsub1(); unsub2() }
   }, [])

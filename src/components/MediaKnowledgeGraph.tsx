@@ -130,7 +130,7 @@ export function MediaKnowledgeGraph({ onPlay, onClose }: MediaKnowledgeGraphProp
       const filtered = mediaItems.filter(item =>
         item.title.toLowerCase().includes(searchQuery.toLowerCase())
       ).slice(0, 10)
-      setSearchResults(filtered)
+      setSearchResults(filtered as any)
     } finally {
       setIsSearching(false)
     }

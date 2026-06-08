@@ -21,6 +21,14 @@ interface HeroItem {
   hasChildren?: boolean
   childCount?: number
   mediaSourceId?: string
+  videoUrl?: string
+  duration?: string
+  artist?: string
+  views?: number
+  channel?: string
+  createdAt?: string
+  parentId?: string
+  collectionType?: string
 }
 
 interface HeroBannerProps {

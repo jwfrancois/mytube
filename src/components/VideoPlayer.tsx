@@ -51,7 +51,7 @@ import { isAudioType } from '@/lib/media-utils'
 
 // ─── hls.js dynamic import ──────────────────────────────────────────────────
 // hls.js is a client-only library, so we import it dynamically
-type HlsType = import('hls.js').default
+type HlsType = typeof import('hls.js').default
 let Hls: HlsType | null = null
 let hlsLoadPromise: Promise<HlsType | null> | null = null
 
@@ -59,7 +59,7 @@ async function loadHls(): Promise<HlsType | null> {
   if (Hls) return Hls
   if (hlsLoadPromise) return hlsLoadPromise
   hlsLoadPromise = import('hls.js').then((mod) => {
-    Hls = mod.default
+    Hls = mod.default as HlsType
     return Hls
   }).catch(() => null)
   return hlsLoadPromise
@@ -534,12 +534,18 @@ function AudioPlayerView({
 
   useEffect(() => {
     const unsub1 = useAppStore.subscribe(
-      (s) => s.audioCurrentTime,
-      (time) => { if (!seeking) setReactiveTime(time) }
+      (state, prevState) => {
+        if (state.audioCurrentTime !== prevState.audioCurrentTime && !seeking) {
+          setReactiveTime(state.audioCurrentTime)
+        }
+      }
     )
     const unsub2 = useAppStore.subscribe(
-      (s) => s.audioDuration,
-      (d) => setReactiveDuration(d)
+      (state, prevState) => {
+        if (state.audioDuration !== prevState.audioDuration) {
+          setReactiveDuration(state.audioDuration)
+        }
+      }
     )
     return () => { unsub1(); unsub2() }
   }, [seeking])
@@ -1225,14 +1231,14 @@ export function VideoPlayer() {
                     ⭐ {currentMedia.communityRating.toFixed(1)}
                   </Badge>
                 )}
-                {currentMedia.childCount > 0 && currentMedia.type === 'TV_SHOW' && (
+                {(currentMedia.childCount ?? 0) > 0 && currentMedia.type === 'TV_SHOW' && (
                   <Badge variant="outline" className="text-xs gap-1">
-                    {currentMedia.childCount} Season{currentMedia.childCount > 1 ? 's' : ''}
+                    {currentMedia.childCount} Season{(currentMedia.childCount ?? 0) > 1 ? 's' : ''}
                   </Badge>
                 )}
-                {currentMedia.childCount > 0 && currentMedia.type === 'COLLECTION' && (
+                {(currentMedia.childCount ?? 0) > 0 && currentMedia.type === 'COLLECTION' && (
                   <Badge variant="outline" className="text-xs gap-1">
-                    {currentMedia.childCount} Film{currentMedia.childCount > 1 ? 's' : ''}
+                    {currentMedia.childCount} Film{(currentMedia.childCount ?? 0) > 1 ? 's' : ''}
                   </Badge>
                 )}
                 {isJellyfin && (

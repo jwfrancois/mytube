@@ -56,6 +56,7 @@ interface CastPerson {
   character?: string
   thumbnail: string
   profilePath?: string | null
+  type?: string
 }
 
 interface CrewPerson {
@@ -66,6 +67,7 @@ interface CrewPerson {
   department?: string
   thumbnail: string
   profilePath?: string | null
+  type?: string
 }
 
 interface GenreInfo {
@@ -597,8 +599,11 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
   const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null)
   useEffect(() => {
     const unsub = useAppStore.subscribe(
-      (s) => s.audioTrack?.jellyfinId,
-      (id) => setCurrentlyPlayingId(id ?? null)
+      (state, prevState) => {
+        if (state.audioTrack?.jellyfinId !== prevState.audioTrack?.jellyfinId) {
+          setCurrentlyPlayingId(state.audioTrack?.jellyfinId ?? null)
+        }
+      }
     )
     setCurrentlyPlayingId(useAppStore.getState().audioTrack?.jellyfinId ?? null)
     return unsub
@@ -786,6 +791,7 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
       artist: '',
       views: 0,
       channel: 'Jellyfin',
+      createdAt: '',
       isJellyfin: true,
       jellyfinId: episode.id,
       mediaSourceId: episode.mediaSourceId,
@@ -810,6 +816,7 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
       artist: '',
       views: 0,
       channel: '',
+      createdAt: '',
       isJellyfin: true,
       jellyfinId: child.Id,
       mediaSourceId: child.MediaSources?.[0]?.Id || '',
@@ -892,6 +899,7 @@ export function MediaDetail({ jellyfinId, title, type, itemType }: MediaDetailPr
       artist: '',
       views: 0,
       channel: 'Jellyfin',
+      createdAt: '',
       isJellyfin: true,
       jellyfinId: episode.id,
       mediaSourceId: episode.mediaSourceId,

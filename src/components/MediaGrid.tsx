@@ -260,7 +260,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
             onMoreInfo={(item) => {
               // Open detail view for the item
               const { setCurrentMedia } = useAppStore.getState()
-              setCurrentMedia(item)
+              setCurrentMedia(item as any)
             }}
           />
         )}
