@@ -4,9 +4,10 @@ import { db } from '@/lib/db'
  * Jellyfin Credentials Helper
  *
  * On Vercel serverless, in-memory state is lost between invocations.
- * This helper ensures we always have credentials by:
- * 1. Checking the database first (persisted from a previous connection)
- * 2. If no credentials exist, auto-connecting from environment variables
+ * This helper ensures we always have VALID credentials by:
+ * 1. Checking the database for existing credentials
+ * 2. Validating the stored token with a lightweight API call
+ * 3. If the token is invalid, clearing it and auto-connecting from env vars
  *
  * This replaces the old pattern of relying on in-memory caches that
  * don't survive serverless cold starts.
@@ -21,34 +22,90 @@ interface JellyfinCreds {
   serverId: string
 }
 
-// Known server ID (consistent identifier for the Jellyfin server)
-const JELLYFIN_SERVER_ID = '363ac50118644e63bddcd34c6dc063a9'
+// In-memory cache for validated credentials (survives within a single serverless invocation)
+let validatedCreds: JellyfinCreds | null = null
+let validatedAt = 0
+const CREDS_CACHE_MS = 60_000 // Re-validate at most once per minute
 
 /**
- * Get Jellyfin credentials from DB, or auto-connect from env vars if none exist.
+ * Get Jellyfin credentials, validating the token before returning.
  * This is the primary way all API routes should obtain credentials.
  */
 export async function getJellyfinCredentials(): Promise<JellyfinCreds | null> {
+  // Return in-memory cached creds if recently validated
+  if (validatedCreds && Date.now() - validatedAt < CREDS_CACHE_MS) {
+    return validatedCreds
+  }
+
   // Step 1: Try database for existing credentials
   try {
     const server = await db.jellyfinServer.findFirst()
     if (server && server.connected && server.accessToken) {
-      return {
+      const creds: JellyfinCreds = {
         serverUrl: server.serverUrl,
         userId: server.userId,
         accessToken: server.accessToken,
         username: server.username,
         connected: true,
-        serverId: JELLYFIN_SERVER_ID,
+        serverId: server.serverUrl.includes('manitou') ? '363ac50118644e63bddcd34c6dc063a9' : '',
       }
+
+      // Step 2: Validate the token with a lightweight API call
+      const isValid = await validateToken(creds)
+      if (isValid) {
+        validatedCreds = creds
+        validatedAt = Date.now()
+        return creds
+      }
+
+      // Token is invalid — clear stale DB record
+      console.warn('Jellyfin token is invalid (401). Clearing stale credentials and attempting re-auth.')
+      await invalidateCredentials()
     }
   } catch (dbError) {
     console.error('DB lookup failed for Jellyfin credentials (will try auto-connect):', dbError)
     // DB might be unavailable — fall through to auto-connect
   }
 
-  // Step 2: No credentials in DB — try auto-connect from env vars
-  return await autoConnectFromEnv()
+  // Step 3: Try auto-connect from env vars
+  const newCreds = await autoConnectFromEnv()
+  if (newCreds) {
+    validatedCreds = newCreds
+    validatedAt = Date.now()
+  }
+  return newCreds
+}
+
+/**
+ * Validate a token by making a lightweight API call to Jellyfin.
+ * Returns true if the token is valid, false otherwise.
+ */
+async function validateToken(creds: JellyfinCreds): Promise<boolean> {
+  try {
+    const res = await fetch(`${creds.serverUrl}/System/Info`, {
+      headers: { 'X-Emby-Token': creds.accessToken },
+      signal: AbortSignal.timeout(5000),
+    })
+    return res.ok
+  } catch {
+    // Network error — token might be valid but server unreachable
+    // Return true optimistically to avoid forcing re-auth during outages
+    console.warn('Could not validate Jellyfin token (network error). Assuming valid.')
+    return true
+  }
+}
+
+/**
+ * Clear stale credentials from the database.
+ */
+async function invalidateCredentials(): Promise<void> {
+  try {
+    await db.jellyfinServer.deleteMany()
+  } catch {
+    // Non-fatal
+  }
+  validatedCreds = null
+  validatedAt = 0
 }
 
 /**
@@ -75,7 +132,7 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Emby-Authorization': `Emby Client="MyTube", Device="WebBrowser", DeviceId="mytube-auto", Version="1.0.0"`,
+        'X-Emby-Authorization': `Emby Client="MyTube", Device="WebBrowser", DeviceId="mytube-auto-${Date.now()}", Version="1.0.0"`,
       },
       body: JSON.stringify({ Username: username, Pw: password }),
       signal: controller.signal,
@@ -84,16 +141,19 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
     clearTimeout(timeoutId)
 
     if (!authResponse.ok) {
-      console.error('Jellyfin auto-connect auth failed:', authResponse.status)
+      const errorText = await authResponse.text().catch(() => '')
+      console.error('Jellyfin auto-connect auth failed:', authResponse.status, errorText.substring(0, 200))
       return null
     }
 
     const authData = await authResponse.json()
-    const { AccessToken, User } = authData
+    const { AccessToken, User, ServerId } = authData
 
     if (!AccessToken || !User?.Id) {
       return null
     }
+
+    const serverId = ServerId || ''
 
     // Save to database for future requests (non-fatal if it fails)
     try {
@@ -120,7 +180,7 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
       accessToken: AccessToken,
       username: User.Name || username,
       connected: true,
-      serverId: JELLYFIN_SERVER_ID,
+      serverId,
     }
   } catch (error) {
     console.error('Jellyfin auto-connect error:', error)
@@ -129,16 +189,32 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
 }
 
 /**
- * Check if Jellyfin is connected (quick check without full auth).
+ * Force a re-authentication on the next getJellyfinCredentials() call.
+ * Called when an API route gets a 401 from Jellyfin.
+ */
+export function invalidateCredentialCache(): void {
+  validatedCreds = null
+  validatedAt = 0
+}
+
+/**
+ * Force re-connect: clear DB credentials + in-memory cache,
+ * then attempt fresh authentication from env vars.
+ */
+export async function forceReconnect(): Promise<JellyfinCreds | null> {
+  await invalidateCredentials()
+  const creds = await autoConnectFromEnv()
+  if (creds) {
+    validatedCreds = creds
+    validatedAt = Date.now()
+  }
+  return creds
+}
+
+/**
+ * Check if Jellyfin is connected (quick check with token validation).
  */
 export async function isJellyfinConnected(): Promise<boolean> {
-  try {
-    const server = await db.jellyfinServer.findFirst()
-    if (server?.connected) return true
-  } catch {
-    // DB unavailable
-  }
-
-  // Check if env vars are configured
-  return !!(process.env.JELLYFIN_SERVER_URL && process.env.JELLYFIN_USERNAME && process.env.JELLYFIN_PASSWORD)
+  const creds = await getJellyfinCredentials()
+  return creds !== null && creds.connected
 }

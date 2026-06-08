@@ -3,14 +3,18 @@ import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 
 export async function GET() {
   try {
-    // This will auto-connect from env vars if no credentials are in DB
+    // getJellyfinCredentials now validates the token before returning
     const creds = await getJellyfinCredentials()
 
     if (!creds || !creds.connected) {
-      return NextResponse.json({ connected: false, server: null })
+      return NextResponse.json({
+        connected: false,
+        server: null,
+        error: 'Not connected to Jellyfin. Check your server URL and credentials.',
+      })
     }
 
-    // Try to get server info from Jellyfin for additional details
+    // Get server info for additional details (token is already validated)
     let serverInfo: { serverName: string; version: string; operatingSystem: string } | null = null
     try {
       const infoRes = await fetch(`${creds.serverUrl}/System/Info`, {
@@ -58,6 +62,10 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Jellyfin status error:', error)
-    return NextResponse.json({ connected: false, server: null })
+    return NextResponse.json({
+      connected: false,
+      server: null,
+      error: 'Failed to check Jellyfin status.',
+    })
   }
 }
