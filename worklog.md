@@ -109,3 +109,38 @@ Stage Summary:
 - Navigation preserves breadcrumbs and collection type context
 - No emoji used anywhere; all Lucide icons
 - All interactions use shadcn/ui components (Card, Button, Badge, Skeleton)
+---
+Task ID: 5
+Agent: main
+Task: Fix Vercel deployment, add NAS to Navbar, make Jellyfin web-like experience
+
+Work Log:
+- Investigated Vercel 404 DEPLOYMENT_NOT_FOUND error - Vercel project not properly deployed
+- Tested Jellyfin auth endpoint - returns 500 on /Users/AuthenticateByName
+- Added JELLYFIN_ACCESS_TOKEN + JELLYFIN_USER_ID env var support to bypass broken auth
+- Rewrote jellyfin-credentials.ts to support direct token auth (Priority 1) before username/password
+- Rewrote auto-connect route to use the shared credentials helper
+- Updated Header.tsx with prominent NAS button in navbar - clickable, shows connection status
+- Rewrote JellyfinBrowser.tsx (2100+ lines) to behave like native Jellyfin web:
+  - Root view with library cards, continue watching, recently added sections
+  - Library browsing with sort/filter (Name, Date, Rating, Year)
+  - Grid/List view toggle
+  - Search within library with debounced search
+  - Item detail view for Series (seasons+episodes), Music Albums (tracks), Collections
+  - Breadcrumb navigation
+  - Season/Episode navigation for TV shows
+  - Play All for music albums (audio queue)
+  - Cast & Crew section with photos
+  - External links (IMDb, TMDB, TVDB)
+  - Media info (resolution, codec, audio)
+- Updated vercel.json to use npx prisma generate for reliability
+- Updated .env.example with JELLYFIN_ACCESS_TOKEN documentation
+- Verified sandbox works: NAS button visible, Jellyfin browser loads, movies play
+- All lint checks pass
+
+Stage Summary:
+- NAS button now prominent in Header/Navbar - clickable to open Jellyfin browser
+- JellyfinBrowser provides native Jellyfin web-like experience
+- AI features work when Jellyfin is connected (they depend on Jellyfin data)
+- Vercel deployment requires user to set JELLYFIN_ACCESS_TOKEN env var
+- Pushed 3 commits to GitHub: auth fix, UI improvements, build config fix
