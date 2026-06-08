@@ -503,8 +503,10 @@ export default function Home() {
       )
     }
 
-    // For other categories, build category-specific sections grouped by genre
-    const categoryFilteredItems = mediaItems.filter(i => i.type === activeCategory)
+    // For other categories (or ALL with empty sections), build category-specific sections
+    const categoryFilteredItems = activeCategory === 'ALL'
+      ? mediaItems
+      : mediaItems.filter(i => i.type === activeCategory)
 
     const categorySections: MediaSection[] = []
     if (categoryFilteredItems.length > 0) {
@@ -557,7 +559,15 @@ export default function Home() {
           onWatchLater={handleWatchLater}
           onRemoveWatchLater={handleRemoveWatchLater}
           isInWatchLater={handleIsInWatchLater}
-          onPlay={handlePlay}
+          onPlay={(item) => {
+            if (item.id === 'jellyfin-browser-link') {
+              setActiveCategory('JELLYFIN')
+              return
+            }
+            handlePlay(item)
+          }}
+          preBanner={activeCategory === 'ALL' ? <LivingHomeScreen mediaItems={mediaItems} onPlay={handlePlay} /> : undefined}
+          topSlot={activeCategory === 'ALL' ? <AIConcierge onPlay={handlePlay} /> : undefined}
         />
       </>
     )

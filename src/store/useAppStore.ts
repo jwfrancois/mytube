@@ -141,7 +141,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Category
   activeCategory: 'ALL',
-  setActiveCategory: (cat) => set({ activeCategory: cat, activeGenre: '', isLoading: true, mediaItems: [] }),
+  setActiveCategory: (cat) => set({ activeCategory: cat, activeGenre: '', isLoading: true }),
   activeGenre: '',
   setActiveGenre: (genre) => set({ activeGenre: genre }),
   sortBy: 'recent',

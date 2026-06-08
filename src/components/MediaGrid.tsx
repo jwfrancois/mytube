@@ -192,7 +192,7 @@ function HorizontalShelf({
 }
 
 export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWatchLater, isInWatchLater, onPlay, topSlot, middleSlot, middleSlotAfterSectionId, preBanner }: MediaGridProps) {
-  const { activeCategory, sortBy, setSortBy, isLoading } = useAppStore()
+  const { activeCategory, sortBy, setSortBy, isLoading, jellyfinConnected } = useAppStore()
   // Track client-side mount to avoid hydration mismatch (sections load asynchronously)
   const [mounted, setMounted] = useState(false)
   useEffect(() => {
@@ -249,22 +249,22 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
     )
   }
 
+  // Build hero items from top-rated items across all sections
+  const heroItems = items
+    .filter(i => i.thumbnail && (i.type === 'MOVIE' || i.type === 'TV_SHOW' || i.type === 'COLLECTION'))
+    .sort((a, b) => {
+      const scoreA = a.communityRating ? a.communityRating * 100 : a.views || 0
+      const scoreB = b.communityRating ? b.communityRating * 100 : b.views || 0
+      return scoreB - scoreA
+    })
+    .slice(0, 8)
+
   // If sections are provided, render them as horizontal shelves with hero banner
   // Only render sections after client mount to avoid hydration mismatch
   if (mounted && sections && sections.length > 0) {
-    // Build hero items from top-rated items across all sections
-    const heroItems = items
-      .filter(i => i.thumbnail && (i.type === 'MOVIE' || i.type === 'TV_SHOW' || i.type === 'COLLECTION'))
-      .sort((a, b) => {
-        const scoreA = a.communityRating ? a.communityRating * 100 : a.views || 0
-        const scoreB = b.communityRating ? b.communityRating * 100 : b.views || 0
-        return scoreB - scoreA
-      })
-      .slice(0, 8)
-
     return (
       <div className="pb-6">
-        {/* Pre-Banner — Time-of-day context banner (before hero) */}
+        {/* Pre-Banner — Time-of-day context banner (before hero) — always on Home */}
         {preBanner && activeCategory === 'ALL' && preBanner}
 
         {/* Hero Banner — only on Home page */}
@@ -278,6 +278,24 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
               setCurrentMedia(item as any)
             }}
           />
+        )}
+
+        {/* Fallback hero when connected but no items loaded yet */}
+        {activeCategory === 'ALL' && heroItems.length === 0 && jellyfinConnected && (
+          <section className="relative w-full h-[30vh] min-h-[240px] max-h-[400px] overflow-hidden select-none">
+            <div className="w-full h-full bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f0f0f] hero-gradient-animated" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+            <div className="absolute inset-0 flex items-end pb-12 px-6 sm:px-12 lg:px-16">
+              <div className="max-w-xl space-y-3">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight leading-none text-white drop-shadow-lg">
+                  Welcome to MyTube
+                </h1>
+                <p className="text-sm sm:text-base text-white/70 leading-relaxed">
+                  Your media library is loading. Browse your Jellyfin NAS content using the sidebar categories.
+                </p>
+              </div>
+            </div>
+          </section>
         )}
 
         {/* Section Header — only when NOT on ALL (hero replaces it for home) */}
@@ -340,35 +358,70 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
   }
 
   return (
-    <div className="p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">{categoryTitle[activeCategory] || 'Home'}</h1>
-        <div className="flex items-center gap-2">
-          <Button
-            variant={sortBy === 'popular' ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => setSortBy('popular')}
-            className="gap-1"
-          >
-            Popular
-          </Button>
-          <Button
-            variant={sortBy === 'recent' ? 'secondary' : 'ghost'}
-            size="sm"
-            onClick={() => setSortBy('recent')}
-            className="gap-1"
-          >
-            Recent
-          </Button>
+    <div className="pb-6">
+      {/* Pre-Banner — always show on Home page */}
+      {preBanner && activeCategory === 'ALL' && preBanner}
+
+      {/* Hero Banner on Home page */}
+      {activeCategory === 'ALL' && heroItems.length > 0 && (
+        <HeroBanner
+          items={heroItems}
+          onPlay={(item) => onPlay?.(item)}
+          onMoreInfo={(item) => {
+            const { setCurrentMedia } = useAppStore.getState()
+            setCurrentMedia(item as any)
+          }}
+        />
+      )}
+
+      {/* Fallback hero when connected but no items loaded yet */}
+      {activeCategory === 'ALL' && heroItems.length === 0 && jellyfinConnected && (
+        <section className="relative w-full h-[30vh] min-h-[240px] max-h-[400px] overflow-hidden select-none">
+          <div className="w-full h-full bg-gradient-to-br from-[#1a1a2e] via-[#16213e] to-[#0f0f0f] hero-gradient-animated" />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
+          <div className="absolute inset-0 flex items-end pb-12 px-6 sm:px-12 lg:px-16">
+            <div className="max-w-xl space-y-3">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight leading-none text-white drop-shadow-lg">
+                Welcome to MyTube
+              </h1>
+              <p className="text-sm sm:text-base text-white/70 leading-relaxed">
+                Your media library is loading. Browse your Jellyfin NAS content using the sidebar categories.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Header for non-ALL categories */}
+      {activeCategory !== 'ALL' && (
+        <div className="flex items-center justify-between mb-6 px-6 pt-6">
+          <h1 className="text-2xl font-bold">{categoryTitle[activeCategory] || 'Home'}</h1>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={sortBy === 'popular' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setSortBy('popular')}
+              className="gap-1"
+            >
+              Popular
+            </Button>
+            <Button
+              variant={sortBy === 'recent' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setSortBy('recent')}
+              className="gap-1"
+            >
+              Recent
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
 
       {activeCategory === 'ALL' && Object.keys(genreGroups).length > 0 ? (
         Object.entries(genreGroups).map(([genre, genreItems]) => (
           <section key={genre} className="mb-8">
-            <h2 className="text-lg font-semibold mb-3">{genre}</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <h2 className="text-lg font-semibold mb-3 px-6">{genre}</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-6">
               {genreItems.map((item, idx) => (
                 <MediaCard
                   key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}`}
@@ -385,7 +438,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
       ) : (
         <>
           {filteredItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground px-6">
               <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mb-4 opacity-20">
                 <rect width="18" height="18" x="3" y="3" rx="2" />
                 <path d="M7 3v18" />
@@ -397,10 +450,14 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
                 <path d="M17 16.5h4" />
               </svg>
               <p className="text-lg font-medium">No content found</p>
-              <p className="text-sm mt-1">Try a different category or add some media</p>
+              <p className="text-sm mt-1">
+                {jellyfinConnected
+                  ? 'Loading content from your Jellyfin NAS…'
+                  : 'Connect to Jellyfin to browse your media library'}
+              </p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-6">
               {filteredItems.map((item, idx) => (
                 <MediaCard
                   key={`${item.isJellyfin ? 'jf' : 'local'}-${item.id}`}

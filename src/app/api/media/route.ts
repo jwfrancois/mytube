@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 import { mediaCache } from '@/lib/media-cache'
+import { fetchJellyfinCategoryItems, fetchAllJellyfinItems } from '@/lib/jellyfin-category'
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     const total = await db.media.count({ where })
 
-    // If requested, also fetch Jellyfin items and merge
+    // If requested, also fetch Jellyfin items DIRECTLY (no internal HTTP fetch!)
     let jellyfinItems: any[] = []
     let jellyfinTotal = 0
 
@@ -42,31 +43,19 @@ export async function GET(request: NextRequest) {
         const { getJellyfinCredentials } = await import('@/lib/jellyfin-credentials')
         const creds = await getJellyfinCredentials()
         if (creds && creds.connected) {
-          const types = type ? [type] : ['MOVIE', 'TV_SHOW', 'MUSIC', 'PODCAST', 'AUDIOBOOK', 'COLLECTION']
-
-          for (let i = 0; i < types.length; i += 2) {
-            const batch = types.slice(i, i + 2)
-            const results = await Promise.allSettled(
-              batch.map(async (t) => {
-                const jellyfinRes = await fetch(
-                  `${request.nextUrl.origin}/api/jellyfin/category?type=${t}&limit=20`,
-                  { signal: AbortSignal.timeout(15000) }
-                )
-                if (!jellyfinRes.ok) return []
-                const jellyfinData = await jellyfinRes.json()
-                return jellyfinData.items || []
-              })
-            )
-            results.forEach((result) => {
-              if (result.status === 'fulfilled') {
-                jellyfinItems.push(...result.value)
-              }
-            })
+          if (type) {
+            // Specific category — fetch just that type directly from Jellyfin
+            const categoryResult = await fetchJellyfinCategoryItems(type, 50)
+            jellyfinItems = categoryResult.items || []
+            jellyfinTotal = categoryResult.totalRecordCount || 0
+          } else {
+            // Home page — fetch all types
+            jellyfinItems = await fetchAllJellyfinItems(20)
+            jellyfinTotal = jellyfinItems.length
           }
-          jellyfinTotal = jellyfinItems.length
         }
       } catch (err) {
-        console.error('Failed to fetch Jellyfin items for category:', err)
+        console.error('Failed to fetch Jellyfin items for media endpoint:', err)
       }
     }
 
