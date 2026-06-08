@@ -53,7 +53,9 @@ export async function POST() {
       return NextResponse.json({
         success: false,
         error: authResponse.status === 401
-          ? 'Auto-connect authentication failed. Check JELLYFIN_USERNAME and JELLYFIN_PASSWORD environment variables.'
+          ? 'Authentication failed. Check your username and password.'
+          : authResponse.status === 500
+          ? 'Jellyfin server is experiencing an internal error. Please restart your Jellyfin server and try again.'
           : `Jellyfin server returned error (${authResponse.status}).`,
       }, { status: authResponse.status === 401 ? 401 : 502 })
     }

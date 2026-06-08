@@ -179,25 +179,24 @@ export function Sidebar() {
             <span className="text-[10px] leading-tight">{item.label}</span>
           </Button>
         ))}
-        {jellyfinConnected && (
-          <>
-            <Separator className="my-1 bg-white/5" />
-            {jellyfinItems.map((item) => (
-              <Button
-                key={item.label}
-                variant="ghost"
-                className={cn(
-                  "flex flex-col items-center gap-1 h-auto py-3 px-2 w-full rounded-lg transition-colors",
-                  item.active && "text-mythic bg-mythic/10"
-                )}
-                onClick={() => handleItemClick(item)}
-              >
-                <item.icon className="h-5 w-5" />
-                <span className="text-[10px] leading-tight">NAS</span>
-              </Button>
-            ))}
-          </>
-        )}
+        <>
+          <Separator className="my-1 bg-white/5" />
+          {jellyfinItems.map((item) => (
+            <Button
+              key={item.label}
+              variant="ghost"
+              className={cn(
+                "flex flex-col items-center gap-1 h-auto py-3 px-2 w-full rounded-lg transition-colors",
+                item.active && "text-mythic bg-mythic/10"
+              )}
+              onClick={() => handleItemClick(item)}
+            >
+              <item.icon className="h-5 w-5" />
+              <span className="text-[10px] leading-tight">NAS</span>
+              {jellyfinConnected && <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />}
+            </Button>
+          ))}
+        </>
         <div className="mt-auto">
           <Button
             variant="ghost"
@@ -255,34 +254,43 @@ export function Sidebar() {
             ))}
           </div>
 
-          {/* Jellyfin Section */}
-          {jellyfinConnected && (
-            <>
-              <Separator className="my-2 bg-white/5" />
-              <div className="px-2">
-                <p className="px-3 mb-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest flex items-center gap-1.5">
-                  <Server className="h-3 w-3" />
-                  NAS Server
+          {/* Jellyfin Section — always visible */}
+          <>
+            <Separator className="my-2 bg-white/5" />
+            <div className="px-2">
+              <p className="px-3 mb-1.5 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest flex items-center gap-1.5">
+                <Server className="h-3 w-3" />
+                NAS Server
+                {jellyfinConnected ? (
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse-dot ml-auto" />
-                </p>
-                {/* Browse all */}
-                {jellyfinItems.map((item) => (
-                  <Button
-                    key={item.label}
-                    variant="ghost"
-                    className={cn(
-                      "w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg transition-all duration-200",
-                      item.active && "bg-mythic/10 text-mythic font-medium border-l-2 border-mythic"
-                    )}
-                    onClick={() => handleItemClick(item)}
-                  >
-                    <item.icon className="h-5 w-5 shrink-0" />
-                    <span>{item.label}</span>
+                ) : (
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-500 ml-auto" />
+                )}
+              </p>
+              {/* Browse all */}
+              {jellyfinItems.map((item) => (
+                <Button
+                  key={item.label}
+                  variant="ghost"
+                  className={cn(
+                    "w-full justify-start gap-4 px-3 py-2 h-9 font-normal rounded-lg transition-all duration-200",
+                    item.active && "bg-mythic/10 text-mythic font-medium border-l-2 border-mythic"
+                  )}
+                  onClick={() => handleItemClick(item)}
+                >
+                  <item.icon className="h-5 w-5 shrink-0" />
+                  <span>{item.label}</span>
+                  {jellyfinConnected ? (
                     <Badge variant="outline" className="ml-auto text-[8px] px-1 py-0 h-4 text-emerald-400 border-emerald-500/30 bg-emerald-500/10">
                       Online
                     </Badge>
-                  </Button>
-                ))}
+                  ) : (
+                    <Badge variant="outline" className="ml-auto text-[8px] px-1 py-0 h-4 text-amber-400 border-amber-500/30 bg-amber-500/10">
+                      Offline
+                    </Badge>
+                  )}
+                </Button>
+              ))}
                 {/* Individual libraries */}
                 {jellyfinLibraries.length > 0 && (
                   <div className="ml-2 mt-1">
@@ -314,7 +322,6 @@ export function Sidebar() {
                 )}
               </div>
             </>
-          )}
 
           <Separator className="my-2 bg-white/5" />
 

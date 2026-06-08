@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react'
+import { useEffect, useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { useAppStore, MediaType } from '@/store/useAppStore'
 import { Header } from '@/components/Header'
 import { Sidebar } from '@/components/Sidebar'
@@ -21,7 +21,7 @@ import { MediaKnowledgeGraph } from '@/components/MediaKnowledgeGraph'
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
 import { isAudioType } from '@/lib/media-utils'
-import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers } from 'lucide-react'
+import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers, Server, AlertCircle, X } from 'lucide-react'
 
 const categoryTitle: Record<string, string> = {
   MOVIE: 'Movies',
@@ -49,10 +49,16 @@ export default function Home() {
     setJellyfinConnected,
     setJellyfinServer,
     setCurrentMedia,
+    setActiveCategory,
     showKnowledgeGraph,
     setShowKnowledgeGraph,
 
   } = useAppStore()
+
+  // Track Jellyfin connection failure state
+  const [jellyfinConnectionFailed, setJellyfinConnectionFailed] = useState(false)
+  const [showConnectionBanner, setShowConnectionBanner] = useState(true)
+  const [jellyfinEnvConfigured, setJellyfinEnvConfigured] = useState(false)
 
   const {
     watchHistory,
@@ -101,24 +107,33 @@ export default function Home() {
     fetchMedia()
   }, [fetchMedia])
 
-  // Check Jellyfin connection on mount, auto-connect if not connected
-  const autoConnectAttemptedRef = useRef(false)
+  // Auto-connect to Jellyfin with retry mechanism
+  const retryCountRef = useRef(0)
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoConnectMountedRef = useRef(true)
+
+  const RETRY_DELAYS = [0, 5000, 15000] // immediate, 5s, 15s
+  const MAX_RETRIES = 3
 
   useEffect(() => {
-    const checkJellyfin = async () => {
+    autoConnectMountedRef.current = true
+
+    const attemptConnect = async (attempt: number): Promise<void> => {
+      if (!autoConnectMountedRef.current) return
+
       try {
-        const res = await fetch('/api/jellyfin/status')
-        const data = await res.json()
-        if (data.connected) {
+        // First check if already connected
+        const statusRes = await fetch('/api/jellyfin/status')
+        const statusData = await statusRes.json()
+
+        if (statusData.connected) {
           setJellyfinConnected(true)
-          if (data.server) setJellyfinServer(data.server)
+          setJellyfinConnectionFailed(false)
+          if (statusData.server) setJellyfinServer(statusData.server)
           return
         }
 
-        // Not connected — attempt auto-connect once per session
-        if (autoConnectAttemptedRef.current) return
-        autoConnectAttemptedRef.current = true
-
+        // Not connected — try auto-connect
         try {
           const connectRes = await fetch('/api/jellyfin/auto-connect', {
             method: 'POST',
@@ -127,19 +142,71 @@ export default function Home() {
           if (connectRes.ok) {
             const connectData = await connectRes.json()
             if (connectData.success) {
+              if (!autoConnectMountedRef.current) return
               setJellyfinConnected(true)
+              setJellyfinConnectionFailed(false)
               if (connectData.server) setJellyfinServer(connectData.server)
+              return
             }
+            // notConfigured means env vars are not set — no point retrying
+            if (connectData.notConfigured) {
+              setJellyfinEnvConfigured(false)
+              return
+            }
+            setJellyfinEnvConfigured(true)
+          } else {
+            setJellyfinEnvConfigured(true)
           }
         } catch (connectErr) {
-          console.error('Auto-connect to Jellyfin failed:', connectErr)
+          console.error(`Auto-connect attempt ${attempt + 1} failed:`, connectErr)
+          setJellyfinEnvConfigured(true)
+        }
+
+        // Connection attempt failed — schedule retry if under max
+        if (attempt + 1 < MAX_RETRIES && autoConnectMountedRef.current) {
+          const nextDelay = RETRY_DELAYS[attempt + 1] || 15000
+          retryTimerRef.current = setTimeout(() => {
+            retryCountRef.current = attempt + 1
+            attemptConnect(attempt + 1)
+          }, nextDelay)
+        } else if (autoConnectMountedRef.current) {
+          // All retries exhausted
+          setJellyfinConnectionFailed(true)
+          setJellyfinConnected(false)
         }
       } catch {
         setJellyfinConnected(false)
+        setJellyfinEnvConfigured(true)
+
+        if (attempt + 1 < MAX_RETRIES && autoConnectMountedRef.current) {
+          const nextDelay = RETRY_DELAYS[attempt + 1] || 15000
+          retryTimerRef.current = setTimeout(() => {
+            retryCountRef.current = attempt + 1
+            attemptConnect(attempt + 1)
+          }, nextDelay)
+        } else if (autoConnectMountedRef.current) {
+          setJellyfinConnectionFailed(true)
+        }
       }
     }
-    checkJellyfin()
+
+    attemptConnect(0)
+
+    return () => {
+      autoConnectMountedRef.current = false
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current)
+        retryTimerRef.current = null
+      }
+    }
   }, [setJellyfinConnected, setJellyfinServer])
+
+  // Re-fetch media when Jellyfin connection state changes to true
+  useEffect(() => {
+    if (jellyfinConnected) {
+      fetchMedia()
+    }
+  }, [jellyfinConnected, fetchMedia])
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return
@@ -219,7 +286,34 @@ export default function Home() {
       })
     }
 
+    // Jellyfin NAS section — always show when connected
+    if (jellyfinConnected) {
+      result.push({
+        id: 'jellyfin-nas',
+        title: 'Jellyfin NAS',
+        items: [{
+          id: 'jellyfin-browser-link',
+          title: 'Browse Jellyfin NAS',
+          description: 'Explore all media on your Jellyfin server',
+          type: 'JELLYFIN',
+          genre: '',
+          thumbnail: '',
+          videoUrl: '',
+          duration: '',
+          releaseYear: 0,
+          artist: '',
+          views: 0,
+          channel: '',
+          createdAt: '',
+          isJellyfin: true,
+          hasChildren: true,
+        }],
+        icon: <Server className="h-5 w-5 text-emerald-400" />,
+      })
+    }
+
     // Group Jellyfin items by type for Home page
+    // Always show Jellyfin category sections when connected, even with 0 items
     const jellyfinMovies = mediaItems.filter(i => i.isJellyfin && i.type === 'MOVIE')
     const jellyfinTVShows = mediaItems.filter(i => i.isJellyfin && i.type === 'TV_SHOW')
     const jellyfinMusic = mediaItems.filter(i => i.isJellyfin && i.type === 'MUSIC')
@@ -227,7 +321,7 @@ export default function Home() {
     const jellyfinAudiobooks = mediaItems.filter(i => i.isJellyfin && i.type === 'AUDIOBOOK')
     const jellyfinCollections = mediaItems.filter(i => i.isJellyfin && i.type === 'COLLECTION')
 
-    if (jellyfinMovies.length > 0) {
+    if (jellyfinConnected || jellyfinMovies.length > 0) {
       result.push({
         id: 'jellyfin-movies',
         title: 'Movies',
@@ -236,7 +330,7 @@ export default function Home() {
       })
     }
 
-    if (jellyfinTVShows.length > 0) {
+    if (jellyfinConnected || jellyfinTVShows.length > 0) {
       result.push({
         id: 'jellyfin-tvshows',
         title: 'TV Shows',
@@ -245,7 +339,7 @@ export default function Home() {
       })
     }
 
-    if (jellyfinMusic.length > 0) {
+    if (jellyfinConnected || jellyfinMusic.length > 0) {
       result.push({
         id: 'jellyfin-music',
         title: 'Music',
@@ -254,7 +348,7 @@ export default function Home() {
       })
     }
 
-    if (jellyfinPodcasts.length > 0) {
+    if (jellyfinConnected || jellyfinPodcasts.length > 0) {
       result.push({
         id: 'jellyfin-podcasts',
         title: 'Podcasts',
@@ -263,7 +357,7 @@ export default function Home() {
       })
     }
 
-    if (jellyfinAudiobooks.length > 0) {
+    if (jellyfinConnected || jellyfinAudiobooks.length > 0) {
       result.push({
         id: 'jellyfin-audiobooks',
         title: 'Audiobooks',
@@ -272,7 +366,7 @@ export default function Home() {
       })
     }
 
-    if (jellyfinCollections.length > 0) {
+    if (jellyfinConnected || jellyfinCollections.length > 0) {
       result.push({
         id: 'jellyfin-collections',
         title: 'Collections',
@@ -302,7 +396,7 @@ export default function Home() {
     }
 
     return result
-  }, [activeCategory, watchHistory, watchLater, mediaItems])
+  }, [activeCategory, watchHistory, watchLater, mediaItems, jellyfinConnected])
 
   const renderContent = () => {
     if (currentMedia) return <VideoPlayer />
@@ -364,25 +458,48 @@ export default function Home() {
       const radioInsertIndex = trendingIndex >= 0 ? trendingIndex + 1 : 2
 
       return (
-        <MediaGrid
-          items={mediaItems}
-          onRefresh={fetchMedia}
-          sections={sections}
-          onWatchLater={handleWatchLater}
-          onRemoveWatchLater={handleRemoveWatchLater}
-          isInWatchLater={handleIsInWatchLater}
-          onPlay={handlePlay}
-          preBanner={<LivingHomeScreen mediaItems={mediaItems} onPlay={handlePlay} />}
-          topSlot={<AIConcierge onPlay={handlePlay} />}
-          middleSlot={(
-            <>
-              <AIRadioStations onPlay={handlePlay} />
-              <SemanticDiscovery onPlay={handlePlay} />
-              <SmartCollections onPlay={handlePlay} />
-            </>
+        <>
+          {/* Connection failure banner */}
+          {jellyfinConnectionFailed && jellyfinEnvConfigured && showConnectionBanner && (
+            <div className="mx-6 mt-4 flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200">
+              <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+              <span>Could not connect to Jellyfin NAS. Media from your server is unavailable.</span>
+              <button
+                onClick={() => setShowConnectionBanner(false)}
+                className="ml-auto shrink-0 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
+                aria-label="Dismiss banner"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
           )}
-          middleSlotAfterSectionId={radioInsertIndex > 0 ? sections[radioInsertIndex - 1]?.id : undefined}
-        />
+          <MediaGrid
+            items={mediaItems}
+            onRefresh={fetchMedia}
+            sections={sections}
+            onWatchLater={handleWatchLater}
+            onRemoveWatchLater={handleRemoveWatchLater}
+            isInWatchLater={handleIsInWatchLater}
+            onPlay={(item) => {
+              // Special handling for the Jellyfin NAS browser link card
+              if (item.id === 'jellyfin-browser-link') {
+                setActiveCategory('JELLYFIN')
+                return
+              }
+              handlePlay(item)
+            }}
+            preBanner={<LivingHomeScreen mediaItems={mediaItems} onPlay={handlePlay} />}
+            topSlot={<AIConcierge onPlay={handlePlay} />}
+            middleSlot={(
+              <>
+                <AIRadioStations onPlay={handlePlay} />
+                <SemanticDiscovery onPlay={handlePlay} />
+                <SmartCollections onPlay={handlePlay} />
+              </>
+            )}
+            middleSlotAfterSectionId={radioInsertIndex > 0 ? sections[radioInsertIndex - 1]?.id : undefined}
+          />
+        </>
       )
     }
 
@@ -418,15 +535,31 @@ export default function Home() {
     }
 
     return (
-      <MediaGrid
-        items={mediaItems}
-        onRefresh={fetchMedia}
-        sections={categorySections.length > 0 ? categorySections : undefined}
-        onWatchLater={handleWatchLater}
-        onRemoveWatchLater={handleRemoveWatchLater}
-        isInWatchLater={handleIsInWatchLater}
-        onPlay={handlePlay}
-      />
+      <>
+        {/* Connection failure banner — show even on fallback/empty pages */}
+        {jellyfinConnectionFailed && jellyfinEnvConfigured && showConnectionBanner && activeCategory === 'ALL' && (
+          <div className="mx-6 mt-4 flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-200">
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+            <span>Could not connect to Jellyfin NAS. Your Jellyfin server may need a restart.</span>
+            <button
+              onClick={() => setShowConnectionBanner(false)}
+              className="ml-auto shrink-0 rounded-full p-0.5 hover:bg-amber-500/20 transition-colors"
+              aria-label="Dismiss banner"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+        <MediaGrid
+          items={mediaItems}
+          onRefresh={fetchMedia}
+          sections={categorySections.length > 0 ? categorySections : undefined}
+          onWatchLater={handleWatchLater}
+          onRemoveWatchLater={handleRemoveWatchLater}
+          isInWatchLater={handleIsInWatchLater}
+          onPlay={handlePlay}
+        />
+      </>
     )
   }
 

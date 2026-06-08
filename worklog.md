@@ -25,3 +25,87 @@ Stage Summary:
 - Jellyfin NAS entry shows in sidebar with "Online" badge
 - 120+ media items from Jellyfin load successfully
 - Vercel deployment needs: DATABASE_URL (Neon), JELLYFIN_SERVER_URL, JELLYFIN_USERNAME, JELLYFIN_PASSWORD env vars
+
+---
+Task ID: 1
+Agent: full-stack-developer
+Task: Fix category route and clear stale cache
+
+Work Log:
+- Rewrote category route with inline logic (removed processLibraries reference)
+- Cleared stale cache and credentials from DB
+- Verified lint passes
+
+Stage Summary:
+- Category route now works without processLibraries function
+- Stale credentials cleared from DB
+
+---
+Task ID: 2-b
+Agent: full-stack-developer
+Task: Improve home page to handle Jellyfin connection states and populate categories
+
+Work Log:
+- Replaced single auto-connect attempt with retry mechanism (3 attempts: immediate, 5s delay, 15s delay)
+- Added `retryCountRef`, `retryTimerRef`, and `autoConnectMountedRef` refs for retry tracking and cleanup
+- Added `jellyfinConnectionFailed`, `showConnectionBanner`, `jellyfinEnvConfigured` state variables
+- Auto-connect detects `notConfigured` response (no env vars) and stops retrying early
+- Added connection failure banner above media content when Jellyfin env vars are set but connection fails
+- Banner is dismissible with an X button, shows amber warning styling with AlertCircle icon
+- Added useEffect to re-fetch media when `jellyfinConnected` changes to true (fixes stale media on initial connect)
+- Added "Jellyfin NAS" section with a card that navigates to JellyfinBrowser when clicked (uses `setActiveCategory('JELLYFIN')`)
+- Changed category sections (Movies, TV Shows, Music, etc.) to always appear when `jellyfinConnected` is true, even with 0 items
+- Updated MediaGrid's `HorizontalShelf` to show a "No items available" placeholder instead of returning null for empty sections
+- Added `Server`, `AlertCircle`, `X` icon imports from lucide-react
+- Added `setActiveCategory` to store destructuring
+- Added `jellyfinConnected` to sections useMemo dependency array
+- All lint checks pass with 0 errors and 0 warnings
+
+Stage Summary:
+- Auto-connect retries up to 3 times with escalating delays (0s, 5s, 15s)
+- Connection failure banner appears when env vars are configured but connection fails
+- Media re-fetches automatically when Jellyfin connects successfully
+- All Jellyfin category sections appear on home page when connected (even with 0 items)
+- "Jellyfin NAS" section with browser link card added
+- Empty sections show "No items available" placeholder instead of being hidden
+
+---
+Task ID: 2-a
+Agent: full-stack-developer
+Task: Improve JellyfinBrowser to work like Jellyfin web
+
+Work Log:
+- Read current JellyfinBrowser.tsx (basic library list with thumbnail cards)
+- Read store (useAppStore), all 5 Jellyfin API routes, and Sidebar component for context
+- Rewrote JellyfinBrowser component with full Jellyfin web-like experience:
+  - **Disconnected state**: Prominent card with Server icon, WifiOff badge, instructions, "Open Settings" button (calls setSettingsOpen(true)), and "Retry Connection" button (calls POST /api/jellyfin/auto-connect with spinning state)
+  - **Connected root view**: 
+    - Header bar with server name (from serverInfo), version, and "Connected" badge with Wifi icon
+    - Large LibraryCard components (Netflix-style gradient tiles) for each top-level library
+    - ContinueWatchingSection sub-component that fetches resume items from first 4 libraries
+    - "Recently Added" horizontal scroll row using /api/jellyfin/category?type=MOVIE&limit=12
+    - Non-library items fallback grid
+    - Empty state with FolderOpen icon
+  - **Drilled-in view**: Back button, breadcrumbs with clickable path, item grid using JellyfinCard
+- Enhanced LibraryCard sub-component:
+  - Gradient backgrounds per collection type (movies=red, tvshows=emerald, music=purple, podcasts=amber, books=teal, boxsets=orange, homevideos=rose, default=slate)
+  - Lucide icons per type (Film, Tv, Music, Mic, Headphones, Layers)
+  - Decorative circles, child count badge, hover scale effect
+- Enhanced JellyfinCard sub-component:
+  - Lucide icons replacing emoji for empty thumbnails
+  - Play button overlay on hover for playable items (non-hasChildren)
+  - ChevronRight overlay for navigable folders
+  - Community rating display (X/10 instead of star emoji)
+  - No emoji anywhere in the code
+- Added retryConnection function: POST /api/jellyfin/auto-connect, updates store on success
+- Added serverInfo state: fetched from /api/jellyfin/status for server name display
+- Added latestItems/latestLoading state: for "Recently Added" section
+- All lint checks pass with 0 errors
+
+Stage Summary:
+- JellyfinBrowser now has 3 distinct states: disconnected, connected-root, and drilled-in
+- Disconnected state shows clear call-to-action with retry
+- Root view shows cinematic library cards with gradients, Continue Watching, and Recently Added sections
+- Navigation preserves breadcrumbs and collection type context
+- No emoji used anywhere; all Lucide icons
+- All interactions use shadcn/ui components (Card, Button, Badge, Skeleton)

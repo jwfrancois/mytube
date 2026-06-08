@@ -78,7 +78,22 @@ function HorizontalShelf({
     setTimeout(checkScroll, 350)
   }
 
-  if (section.items.length === 0) return null
+  if (section.items.length === 0) {
+    return (
+      <section className="mb-8">
+        <div className="flex items-center justify-between mb-3 px-6 group/header">
+          <div className="flex items-center gap-2.5">
+            {section.icon}
+            <h2 className="text-lg sm:text-xl font-bold tracking-tight">{section.title}</h2>
+            <span className="text-xs text-muted-foreground/60 font-medium">(0)</span>
+          </div>
+        </div>
+        <div className="px-6 py-6 text-sm text-muted-foreground/50 text-center border border-dashed border-border/40 rounded-lg mx-6">
+          No items available
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section className="mb-8">

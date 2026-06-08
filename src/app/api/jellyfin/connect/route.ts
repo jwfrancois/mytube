@@ -48,6 +48,9 @@ export async function POST(request: NextRequest) {
       if (authResponse.status === 404) {
         return NextResponse.json({ error: 'Jellyfin server not found at this URL. Make sure the URL is correct.' }, { status: 404 })
       }
+      if (authResponse.status === 500) {
+        return NextResponse.json({ error: 'Jellyfin server is experiencing an internal error. Please restart your Jellyfin server and try again.' }, { status: 502 })
+      }
       return NextResponse.json({ error: `Jellyfin server returned error (${authResponse.status}). Check the server URL.` }, { status: authResponse.status })
     }
 
