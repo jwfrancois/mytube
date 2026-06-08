@@ -104,16 +104,14 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      const res = lineupRes
-
-      if (!res.ok) {
+      if (!lineupRes || !lineupRes.ok) {
         return NextResponse.json(
-          { error: `Failed to fetch channel lineup: ${res.status}` },
+          { error: `Failed to fetch channel lineup: ${lineupRes?.status || 'unknown'}` },
           { status: 502 }
         )
       }
 
-      const lineup = await res.json()
+      const lineup = await lineupRes.json()
 
       // Map the lineup to our LiveTVChannel format
       const channels = lineup.map((ch: any) => ({
