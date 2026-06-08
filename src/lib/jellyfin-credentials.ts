@@ -5,12 +5,21 @@ import { db } from '@/lib/db'
  *
  * On Vercel serverless, in-memory state is lost between invocations.
  * This helper ensures we always have VALID credentials by:
- * 1. Checking the database for existing credentials
- * 2. Validating the stored token with a lightweight API call
- * 3. If the token is invalid, clearing it and auto-connecting from env vars
+ * 1. Checking the database for existing credentials (with token validation)
+ * 2. If the token is invalid, trying env vars — first the direct token, then username/password auth
+ * 3. Saving working credentials to the DB for future requests
  *
- * This replaces the old pattern of relying on in-memory caches that
- * don't survive serverless cold starts.
+ * IMPORTANT: The Jellyfin /Users/AuthenticateByName endpoint may return 500
+ * on some server configurations (reverse proxy, Cloudflare, etc.).
+ * To work around this, you can set JELLYFIN_ACCESS_TOKEN and JELLYFIN_USER_ID
+ * env vars directly, bypassing the auth endpoint entirely.
+ *
+ * Environment Variables:
+ * - JELLYFIN_SERVER_URL  (required) — e.g. https://manitou.dyabavadra.com
+ * - JELLYFIN_ACCESS_TOKEN (optional) — Pre-obtained access token, skips auth endpoint
+ * - JELLYFIN_USER_ID      (optional) — User ID corresponding to the access token
+ * - JELLYFIN_USERNAME     (optional) — For auth endpoint fallback
+ * - JELLYFIN_PASSWORD     (optional) — For auth endpoint fallback
  */
 
 interface JellyfinCreds {
@@ -63,8 +72,8 @@ export async function getJellyfinCredentials(): Promise<JellyfinCreds | null> {
       await invalidateCredentials()
     }
   } catch (dbError) {
-    console.error('DB lookup failed for Jellyfin credentials (will try auto-connect):', dbError)
-    // DB might be unavailable — fall through to auto-connect
+    console.error('DB lookup failed for Jellyfin credentials (will try env vars):', dbError)
+    // DB might be unavailable — fall through to env vars
   }
 
   // Step 3: Try auto-connect from env vars
@@ -110,21 +119,71 @@ async function invalidateCredentials(): Promise<void> {
 
 /**
  * Auto-connect to Jellyfin using environment variables.
- * If env vars are not set, returns null.
+ *
+ * Priority:
+ * 1. If JELLYFIN_ACCESS_TOKEN + JELLYFIN_USER_ID are set, use them directly
+ *    (bypasses the auth endpoint — needed when /Users/AuthenticateByName returns 500)
+ * 2. Otherwise, try username/password authentication via the auth endpoint
+ *
  * If successful, saves credentials to DB for future requests.
  */
 async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
   const serverUrl = process.env.JELLYFIN_SERVER_URL
+  if (!serverUrl) {
+    return null
+  }
+
+  const baseUrl = serverUrl.replace(/\/+$/, '')
+
+  // --- Priority 1: Direct token from env vars ---
+  const directToken = process.env.JELLYFIN_ACCESS_TOKEN
+  const directUserId = process.env.JELLYFIN_USER_ID
+
+  if (directToken && directUserId) {
+    console.log('Using JELLYFIN_ACCESS_TOKEN + JELLYFIN_USER_ID from env vars (bypassing auth endpoint)')
+    const creds: JellyfinCreds = {
+      serverUrl: baseUrl,
+      userId: directUserId,
+      accessToken: directToken,
+      username: process.env.JELLYFIN_USERNAME || 'user',
+      connected: true,
+      serverId: '',
+    }
+
+    // Validate the direct token before using it
+    const isValid = await validateToken(creds)
+    if (isValid) {
+      // Extract serverId from /System/Info
+      try {
+        const infoRes = await fetch(`${baseUrl}/System/Info`, {
+          headers: { 'X-Emby-Token': directToken },
+          signal: AbortSignal.timeout(5000),
+        })
+        if (infoRes.ok) {
+          const info = await infoRes.json()
+          creds.serverId = info.Id || ''
+        }
+      } catch {
+        // Non-critical
+      }
+
+      // Save to database for future requests (non-fatal if it fails)
+      await saveCredentialsToDb(creds)
+      return creds
+    }
+
+    console.warn('JELLYFIN_ACCESS_TOKEN from env vars is invalid. Falling back to username/password auth.')
+  }
+
+  // --- Priority 2: Username/password authentication ---
   const username = process.env.JELLYFIN_USERNAME
   const password = process.env.JELLYFIN_PASSWORD
 
-  if (!serverUrl || !username || !password) {
+  if (!username || !password) {
     return null
   }
 
   try {
-    const baseUrl = serverUrl.replace(/\/+$/, '')
-
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 15000)
 
@@ -153,38 +212,44 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
       return null
     }
 
-    const serverId = ServerId || ''
-
-    // Save to database for future requests (non-fatal if it fails)
-    try {
-      await db.jellyfinServer.deleteMany()
-      await db.jellyfinServer.create({
-        data: {
-          name: 'My Jellyfin',
-          serverUrl: baseUrl,
-          userId: User.Id,
-          accessToken: AccessToken,
-          username: User.Name || username,
-          connected: true,
-          lastConnected: new Date(),
-        },
-      })
-    } catch (dbError) {
-      console.error('Failed to save Jellyfin credentials to DB (non-fatal):', dbError)
-      // Continue anyway — we have the credentials for this request
-    }
-
-    return {
+    const creds: JellyfinCreds = {
       serverUrl: baseUrl,
       userId: User.Id,
       accessToken: AccessToken,
       username: User.Name || username,
       connected: true,
-      serverId,
+      serverId: ServerId || '',
     }
+
+    // Save to database for future requests (non-fatal if it fails)
+    await saveCredentialsToDb(creds)
+    return creds
   } catch (error) {
     console.error('Jellyfin auto-connect error:', error)
     return null
+  }
+}
+
+/**
+ * Save credentials to the database. Non-fatal if it fails.
+ */
+async function saveCredentialsToDb(creds: JellyfinCreds): Promise<void> {
+  try {
+    await db.jellyfinServer.deleteMany()
+    await db.jellyfinServer.create({
+      data: {
+        name: 'My Jellyfin',
+        serverUrl: creds.serverUrl,
+        userId: creds.userId,
+        accessToken: creds.accessToken,
+        username: creds.username,
+        connected: true,
+        lastConnected: new Date(),
+      },
+    })
+  } catch (dbError) {
+    console.error('Failed to save Jellyfin credentials to DB (non-fatal):', dbError)
+    // Continue anyway — we have the credentials for this request
   }
 }
 
