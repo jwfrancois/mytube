@@ -29,6 +29,22 @@ export interface MediaItem {
   parentIndexNumber?: number
   collectionType?: string
   childCount?: number
+  // Extended Jellyfin metadata
+  durationTicks?: number
+  seriesName?: string
+  seasonId?: string
+  seriesId?: string
+  albumArtist?: string
+  album?: string
+  officialRating?: string
+  studios?: string[]
+  actors?: string[]
+  directors?: string[]
+  isAudio?: boolean
+  isVideo?: boolean
+  episodeNumber?: number
+  seasonNumber?: number
+  tags?: string[]
 }
 
 export interface RadioStation {
