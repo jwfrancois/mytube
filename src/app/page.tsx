@@ -15,13 +15,14 @@ import { AIConcierge } from '@/components/AIConcierge'
 import { AIRadioStations } from '@/components/AIRadioStations'
 import { SemanticDiscovery } from '@/components/SemanticDiscovery'
 import { SmartCollections } from '@/components/SmartCollections'
+import { InternetRadio } from '@/components/InternetRadio'
 import { LivingHomeScreen } from '@/components/LivingHomeScreen'
 import { MediaKnowledgeGraph } from '@/components/MediaKnowledgeGraph'
 
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
 import { isAudioType } from '@/lib/media-utils'
-import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers, Server, AlertCircle, X } from 'lucide-react'
+import { History, TrendingUp, Bookmark, SlidersHorizontal, Film, Tv, Music, Mic, Headphones, FolderOpen, Layers, Server, AlertCircle, X, Radio } from 'lucide-react'
 
 const categoryTitle: Record<string, string> = {
   MOVIE: 'Movies',
@@ -30,6 +31,7 @@ const categoryTitle: Record<string, string> = {
   PODCAST: 'Podcasts',
   AUDIOBOOK: 'Audiobooks',
   COLLECTION: 'Collections',
+  RADIO: 'Radio',
 }
 
 export default function Home() {
@@ -402,6 +404,7 @@ export default function Home() {
     if (currentMedia) return <VideoPlayer />
     if (isSearching || searchQuery) return <SearchResults onSearch={handleSearch} />
     if (activeCategory === 'JELLYFIN') return <JellyfinBrowser />
+    if (activeCategory === 'RADIO') return <InternetRadio />
 
     // Knowledge Graph full-screen view
     if (showKnowledgeGraph) {

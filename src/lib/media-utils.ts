@@ -4,5 +4,5 @@
  */
 
 export function isAudioType(type: string): boolean {
-  return ['MUSIC', 'PODCAST', 'AUDIOBOOK'].includes(type)
+  return ['MUSIC', 'PODCAST', 'AUDIOBOOK', 'RADIO'].includes(type)
 }

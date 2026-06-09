@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { isAudioType } from '@/lib/media-utils'
 
-export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'PODCAST' | 'AUDIOBOOK' | 'COLLECTION' | 'JELLYFIN'
+export type MediaType = 'ALL' | 'MOVIE' | 'TV_SHOW' | 'MUSIC' | 'PODCAST' | 'AUDIOBOOK' | 'COLLECTION' | 'JELLYFIN' | 'RADIO'
 export type SortType = 'recent' | 'popular'
 
 export interface MediaItem {
@@ -29,6 +29,22 @@ export interface MediaItem {
   parentIndexNumber?: number
   collectionType?: string
   childCount?: number
+}
+
+export interface RadioStation {
+  stationId: string
+  name: string
+  streamUrl: string
+  homepage?: string
+  favicon?: string
+  country?: string
+  countryCode?: string
+  genre?: string
+  tags?: string
+  bitrate?: number
+  codec?: string
+  votes?: number
+  language?: string
 }
 
 interface JellyfinServerInfo {
@@ -120,6 +136,17 @@ interface AppState {
   // Knowledge Graph view
   showKnowledgeGraph: boolean
   setShowKnowledgeGraph: (show: boolean) => void
+
+  // Internet Radio
+  radioStation: RadioStation | null
+  setRadioStation: (station: RadioStation | null) => void
+  radioFavorites: RadioStation[]
+  addRadioFavorite: (station: RadioStation) => void
+  removeRadioFavorite: (stationId: string) => void
+  radioGenre: string
+  setRadioGenre: (genre: string) => void
+  radioCountry: string
+  setRadioCountry: (country: string) => void
 
   // Persistent Audio Track (decoupled from currentMedia for background playback)
   audioTrack: MediaItem | null
@@ -320,4 +347,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Knowledge Graph
   showKnowledgeGraph: false,
   setShowKnowledgeGraph: (show) => set({ showKnowledgeGraph: show }),
+
+  // Internet Radio
+  radioStation: null,
+  setRadioStation: (station) => set({ radioStation: station }),
+  radioFavorites: [],
+  addRadioFavorite: (station) => set((s) => {
+    if (s.radioFavorites.some(f => f.stationId === station.stationId)) return s
+    return { radioFavorites: [...s.radioFavorites, station] }
+  }),
+  removeRadioFavorite: (stationId) => set((s) => ({
+    radioFavorites: s.radioFavorites.filter(f => f.stationId !== stationId)
+  })),
+  radioGenre: '',
+  setRadioGenre: (genre) => set({ radioGenre: genre }),
+  radioCountry: '',
+  setRadioCountry: (country) => set({ radioCountry: country }),
 }))

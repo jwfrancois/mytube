@@ -13,6 +13,7 @@ import {
   Server,
   FolderOpen,
   Network,
+  Radio,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -111,6 +112,7 @@ export function Sidebar() {
     { icon: Mic, label: 'Podcasts', category: 'PODCAST', active: activeCategory === 'PODCAST' },
     { icon: Headphones, label: 'Audiobooks', category: 'AUDIOBOOK', active: activeCategory === 'AUDIOBOOK' },
     { icon: FolderOpen, label: 'Collections', category: 'COLLECTION', active: activeCategory === 'COLLECTION' },
+    { icon: Radio, label: 'Radio', category: 'RADIO', active: activeCategory === 'RADIO' },
   ]
 
   const jellyfinItems: SidebarItem[] = [

@@ -38,6 +38,7 @@ import {
   BookOpen,
   AlertCircle,
   RefreshCw,
+  Signal,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -53,6 +54,7 @@ const typeIconMap: Record<string, React.ComponentType<{ className?: string }>> =
   PODCAST: Podcast,
   AUDIOBOOK: BookOpen,
   MUSIC: Music,
+  RADIO: Music,
 }
 
 // ─── Queue Item ─────────────────────────────────────────────────────────────
@@ -448,7 +450,8 @@ export function AudioPlayerBar() {
 
   if (!showBar) return null
 
-  const progress = reactiveDuration > 0 ? (reactiveTime / reactiveDuration) * 100 : 0
+  const isRadioLive = audioTrack?.type === 'RADIO'
+  const progress = !isRadioLive && reactiveDuration > 0 ? (reactiveTime / reactiveDuration) * 100 : 0
 
   const RepeatIconComponent = repeatMode === 'one' ? Repeat1 : Repeat
 
@@ -485,23 +488,29 @@ export function AudioPlayerBar() {
         )}
 
         <div className="flex items-center h-20 px-4 gap-4">
-          {/* Progress bar (thin line on top) */}
-          <div className="absolute top-0 left-0 right-0 h-1 bg-muted/50 cursor-pointer group"
-            onClick={(e) => {
-              const el = audioRef.current
-              if (!el || reactiveDuration <= 0) return
-              const rect = e.currentTarget.getBoundingClientRect()
-              const x = e.clientX - rect.left
-              const pct = x / rect.width
-              el.currentTime = pct * reactiveDuration
-              setAudioCurrentTime(pct * reactiveDuration)
-            }}
-          >
-            <div
-              className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-150 group-hover:h-1.5"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+          {/* Progress bar (thin line on top) — hidden for live radio */}
+          {!isRadioLive ? (
+            <div className="absolute top-0 left-0 right-0 h-1 bg-muted/50 cursor-pointer group"
+              onClick={(e) => {
+                const el = audioRef.current
+                if (!el || reactiveDuration <= 0) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                const x = e.clientX - rect.left
+                const pct = x / rect.width
+                el.currentTime = pct * reactiveDuration
+                setAudioCurrentTime(pct * reactiveDuration)
+              }}
+            >
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-150 group-hover:h-1.5"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          ) : (
+            <div className="absolute top-0 left-0 right-0 h-1 bg-mythic/30">
+              <div className="h-full w-full bg-gradient-to-r from-mythic/40 to-orange-500/40 animate-pulse" />
+            </div>
+          )}
 
           <div className="flex items-center h-full gap-4 w-full">
             {/* Left: Track info */}
@@ -537,9 +546,16 @@ export function AudioPlayerBar() {
                 <p className="text-sm font-medium truncate max-w-[200px] sm:max-w-none">
                   {audioTrack.title}
                 </p>
-                <p className="text-xs text-muted-foreground truncate">
-                  {audioTrack.artist || audioTrack.channel || ''}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="text-xs text-muted-foreground truncate">
+                    {audioTrack.artist || audioTrack.channel || ''}
+                  </p>
+                  {isRadioLive && (
+                    <Badge className="text-[8px] px-1 py-0 h-3 bg-emerald-500/20 text-emerald-400 border-emerald-500/30 shrink-0">
+                      LIVE
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -598,20 +614,27 @@ export function AudioPlayerBar() {
                 </Button>
               </div>
 
-              {/* Time display (hidden on very small screens) */}
-              <div className="hidden sm:flex items-center gap-2 w-full max-w-md text-xs text-muted-foreground">
-                <span className="w-10 text-right tabular-nums">{formatTime(reactiveTime)}</span>
-                <Slider
-                  value={[reactiveTime]}
-                  min={0}
-                  max={reactiveDuration || 100}
-                  step={0.1}
-                  onPointerDown={() => setSeeking(true)}
-                  onValueChange={handleSeek}
-                  className="flex-1"
-                />
-                <span className="w-10 tabular-nums">{formatTime(reactiveDuration)}</span>
-              </div>
+              {/* Time display (hidden on very small screens) — replaced with LIVE for radio */}
+              {isRadioLive ? (
+                <div className="hidden sm:flex items-center gap-2 text-xs text-mythic/80">
+                  <Signal className="h-3 w-3" />
+                  <span className="font-medium">Live Stream</span>
+                </div>
+              ) : (
+                <div className="hidden sm:flex items-center gap-2 w-full max-w-md text-xs text-muted-foreground">
+                  <span className="w-10 text-right tabular-nums">{formatTime(reactiveTime)}</span>
+                  <Slider
+                    value={[reactiveTime]}
+                    min={0}
+                    max={reactiveDuration || 100}
+                    step={0.1}
+                    onPointerDown={() => setSeeking(true)}
+                    onValueChange={handleSeek}
+                    className="flex-1"
+                  />
+                  <span className="w-10 tabular-nums">{formatTime(reactiveDuration)}</span>
+                </div>
+              )}
             </div>
 
             {/* Right: Volume, Settings, Queue */}
