@@ -14,6 +14,7 @@ import {
   FolderOpen,
   Network,
   Radio,
+  BarChart3,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -68,6 +69,8 @@ export function Sidebar() {
     setSettingsOpen,
     setShowKnowledgeGraph,
     showKnowledgeGraph,
+    setShowStatsDashboard,
+    showStatsDashboard,
   } = useAppStore()
 
   const [jellyfinLibraries, setJellyfinLibraries] = useState<JellyfinLibrary[]>([])
@@ -99,9 +102,14 @@ export function Sidebar() {
   }, [jellyfinConnected])
 
   const mainItems: SidebarItem[] = [
-    { icon: Home, label: 'Home', category: 'ALL', active: activeCategory === 'ALL' && !showKnowledgeGraph },
+    { icon: Home, label: 'Home', category: 'ALL', active: activeCategory === 'ALL' && !showKnowledgeGraph && !showStatsDashboard },
+    { icon: BarChart3, label: 'Stats', active: showStatsDashboard, action: () => {
+      setShowStatsDashboard(!showStatsDashboard)
+      if (showKnowledgeGraph) setShowKnowledgeGraph(false)
+    }},
     { icon: Network, label: 'Knowledge Graph', active: showKnowledgeGraph, action: () => {
       setShowKnowledgeGraph(!showKnowledgeGraph)
+      if (showStatsDashboard) setShowStatsDashboard(false)
     }},
   ]
 
@@ -120,15 +128,9 @@ export function Sidebar() {
   ]
 
   const handleItemClick = (item: SidebarItem) => {
-    // Handle items with custom actions (e.g., Knowledge Graph)
+    // Handle items with custom actions (e.g., Knowledge Graph, Stats)
     if (item.action) {
       item.action()
-      return
-    }
-
-    // If Knowledge Graph, toggle the graph view
-    if (item.label === 'Knowledge Graph') {
-      setShowKnowledgeGraph(!showKnowledgeGraph)
       return
     }
 
@@ -138,9 +140,12 @@ export function Sidebar() {
       setIsSearching(false)
       setActiveCategory(item.category)
 
-      // Close Knowledge Graph when navigating to any category
+      // Close Knowledge Graph / Stats Dashboard when navigating to any category
       if (showKnowledgeGraph) {
         setShowKnowledgeGraph(false)
+      }
+      if (showStatsDashboard) {
+        setShowStatsDashboard(false)
       }
     }
   }

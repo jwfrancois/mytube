@@ -1,38 +1,112 @@
 ---
 Task ID: 1
-Agent: Main Agent
-Task: Implement Internet Radio feature for MyTube
+Agent: Main Orchestrator
+Task: Analyze MyTube features and plan expert improvements
 
 Work Log:
-- Added `RADIO` to the `MediaType` union in `useAppStore.ts`
-- Added `RadioStation` interface and radio-related state (radioStation, radioFavorites, radioGenre, radioCountry) to the Zustand store
-- Created `src/lib/radio-browser.ts` — RadioBrowser API client with server failover, supporting: top stations, search, by-country, by-tag, advanced search, click tracking
-- Created `src/app/api/radio/route.ts` — Backend API route proxying to RadioBrowser with actions: top, search, country, tag, countries, tags, advanced
-- Created `src/components/InternetRadio.tsx` — Full radio browsing experience with:
-  - 4 tabs: Discover (top stations), Genres (20 curated), Countries (20 with flags), Favorites
-  - Search bar with instant results
-  - Station cards with favicon, bitrate, codec, country, tags, votes
-  - Now Playing bar with LIVE indicator
-  - Heart/favorite toggle per station
-  - Breadcrumb navigation for genre/country/search results
-  - Integration with AudioPlayerBar for background playback
-- Updated `src/components/Sidebar.tsx` — Added Radio icon and category to sidebar
-- Updated `src/app/page.tsx` — Added RADIO category handling, InternetRadio import
-- Updated `src/components/AudioPlayerBar.tsx` — Added RADIO type support with LIVE badge, no progress bar for live streams, Signal icon
-- Updated `src/lib/media-utils.ts` — Added 'RADIO' to isAudioType
-- Fixed dependency array bug (referenced removed `setCurrentMedia`)
-- Verified all features working via Agent Browser:
-  - 50 top stations load on Discover tab
-  - Search works (tested "BBC" → 50 results)
-  - Genre browsing works (tested Jazz)
-  - Country browsing works (tested flags visible)
-  - Station playback works through AudioPlayerBar with LIVE indicator
-  - Radio continues playing when navigating to other pages
-  - Lint passes clean, dev server error-free
+- Explored entire MyTube codebase (37 components, 40+ API routes, Zustand store, Prisma DB)
+- Identified current features: Jellyfin NAS, Internet Radio, AI Concierge/Radio/Discovery/Collections, Knowledge Graph, Live TV, Hero Banner
+- Analyzed gaps: no trending news, no mood-based quick play, no personal analytics, no daily picks, no trivia
+- Planned 5 new features to make MyTube more informative, entertaining, and attractive
 
 Stage Summary:
-- Internet Radio feature fully implemented and verified
-- Uses free RadioBrowser API (50K+ stations, no API key)
-- Rich UI with Discover, Genres, Countries, Favorites, Search
-- Seamless integration with existing AudioPlayerBar (LIVE badge, no seek for live streams)
-- Stations persist in background while browsing other categories
+- Complete codebase analysis performed
+- 5 features planned: Entertainment Hub, Mood QuickPlay, Stats Dashboard, Daily AI Picks, Media Trivia
+
+---
+Task ID: 2
+Agent: Entertainment Hub Builder
+Task: Build Entertainment Hub feature
+
+Work Log:
+- Created API route at src/app/api/entertainment/route.ts with web search via z-ai-web-dev-sdk
+- Created component at src/components/EntertainmentHub.tsx with 4 tabs (Movies, TV, Music, Gaming)
+- In-memory cache with 30-minute TTL
+- Glassmorphism styling with category-specific accent colors
+
+Stage Summary:
+- Entertainment Hub with real-time web search, 4 categories, caching
+- Verified working: Movies tab shows box office news, Music tab shows chart news
+
+---
+Task ID: 3
+Agent: Mood QuickPlay Builder
+Task: Build Mood QuickPlay feature
+
+Work Log:
+- Created component at src/components/MoodQuickPlay.tsx
+- 6 mood cards: Focus, Relax, Workout, Party, Romance, Sleep
+- Each card triggers /api/ai/radio with mood parameter
+- Integrated into page.tsx middleSlot
+
+Stage Summary:
+- Mood QuickPlay with one-tap mood playlists
+- Verified working: Relax mood played "Tango Porteño Moderno" and other tracks
+
+---
+Task ID: 4
+Agent: Stats Dashboard Builder
+Task: Build Personal Stats Dashboard feature
+
+Work Log:
+- Created API route at src/app/api/stats/route.ts
+- Created component at src/components/StatsDashboard.tsx
+- Added showStatsDashboard state to Zustand store
+- Added Stats button to Sidebar
+- CSS-only charts: bar charts, conic-gradient donut chart
+
+Stage Summary:
+- Stats Dashboard with genre breakdown, watch streaks, activity patterns
+- Verified working: Shows "No Stats Yet" for empty history (correct behavior)
+
+---
+Task ID: 5
+Agent: Daily AI Picks Builder
+Task: Build Daily AI Picks feature
+
+Work Log:
+- Created API route at src/app/api/ai/daily-picks/route.ts
+- Created component at src/components/DailyAIPicks.tsx
+- 4 categories: Today's Pick, Hidden Gem, Mood Match, Weekend Binge
+- LLM-powered with rule-based fallback
+
+Stage Summary:
+- Daily AI Picks with featured card + secondary picks
+- Verified working: API returns picks from media library
+
+---
+Task ID: 6
+Agent: Media Trivia Builder
+Task: Build Media Trivia feature
+
+Work Log:
+- Created API route at src/app/api/ai/trivia/route.ts
+- Created component at src/components/MediaTrivia.tsx
+- Two modes: Fun Facts (rotating cards) and Quiz (interactive questions)
+- Fallback content when no watch history
+
+Stage Summary:
+- Media Trivia with facts and quiz modes
+- Shows "Watch something first!" for empty history (correct behavior)
+
+---
+Task ID: 7
+Agent: Main Orchestrator
+Task: Integration verification and browser testing
+
+Work Log:
+- Verified all 5 features render on home page
+- Tested Entertainment Hub: Movies tab shows real box office news, Music tab fetches chart news
+- Tested Mood QuickPlay: Relax mood successfully played audio tracks
+- Tested Stats Dashboard: Shows empty state correctly
+- Tested Media Trivia: Shows empty history message correctly
+- ESLint passes clean with no errors
+- No new console errors introduced
+
+Stage Summary:
+- All 5 features integrated and working
+- Entertainment Hub: Real-time trending entertainment news via web search
+- Mood QuickPlay: One-tap mood-based audio playlists
+- Stats Dashboard: Personal watch analytics with CSS charts
+- Daily AI Picks: AI-curated daily recommendations
+- Media Trivia: Interactive fun facts and quiz mode

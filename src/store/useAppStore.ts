@@ -137,6 +137,10 @@ interface AppState {
   showKnowledgeGraph: boolean
   setShowKnowledgeGraph: (show: boolean) => void
 
+  // Stats Dashboard view
+  showStatsDashboard: boolean
+  setShowStatsDashboard: (show: boolean) => void
+
   // Internet Radio
   radioStation: RadioStation | null
   setRadioStation: (station: RadioStation | null) => void
@@ -347,6 +351,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Knowledge Graph
   showKnowledgeGraph: false,
   setShowKnowledgeGraph: (show) => set({ showKnowledgeGraph: show }),
+
+  // Stats Dashboard
+  showStatsDashboard: false,
+  setShowStatsDashboard: (show) => set({ showStatsDashboard: show }),
 
   // Internet Radio
   radioStation: null,

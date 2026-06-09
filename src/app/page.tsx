@@ -15,9 +15,14 @@ import { AIConcierge } from '@/components/AIConcierge'
 import { AIRadioStations } from '@/components/AIRadioStations'
 import { SemanticDiscovery } from '@/components/SemanticDiscovery'
 import { SmartCollections } from '@/components/SmartCollections'
+import { EntertainmentHub } from '@/components/EntertainmentHub'
 import { InternetRadio } from '@/components/InternetRadio'
 import { LivingHomeScreen } from '@/components/LivingHomeScreen'
+import { MoodQuickPlay } from '@/components/MoodQuickPlay'
 import { MediaKnowledgeGraph } from '@/components/MediaKnowledgeGraph'
+import { StatsDashboard } from '@/components/StatsDashboard'
+import { DailyAIPicks } from '@/components/DailyAIPicks'
+import { MediaTrivia } from '@/components/MediaTrivia'
 
 import { useWatchHistory } from '@/hooks/useWatchHistory'
 import { cn } from '@/lib/utils'
@@ -54,6 +59,8 @@ export default function Home() {
     setActiveCategory,
     showKnowledgeGraph,
     setShowKnowledgeGraph,
+    showStatsDashboard,
+    setShowStatsDashboard,
 
   } = useAppStore()
 
@@ -416,6 +423,15 @@ export default function Home() {
       )
     }
 
+    // Stats Dashboard view
+    if (showStatsDashboard) {
+      return (
+        <StatsDashboard
+          onClose={() => setShowStatsDashboard(false)}
+        />
+      )
+    }
+
     // During SSR/hydration, render a consistent loading state to prevent mismatch.
     // After mount, localStorage data (watchHistory/watchLater) is available,
     // so we can render the full sections-based UI.
@@ -495,9 +511,13 @@ export default function Home() {
             topSlot={<AIConcierge onPlay={handlePlay} />}
             middleSlot={(
               <>
+                <DailyAIPicks onPlay={handlePlay} />
+                <MoodQuickPlay />
                 <AIRadioStations onPlay={handlePlay} />
+                <EntertainmentHub />
                 <SemanticDiscovery onPlay={handlePlay} />
                 <SmartCollections onPlay={handlePlay} />
+                <MediaTrivia />
               </>
             )}
             middleSlotAfterSectionId={radioInsertIndex > 0 ? sections[radioInsertIndex - 1]?.id : undefined}
