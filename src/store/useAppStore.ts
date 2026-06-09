@@ -193,10 +193,14 @@ interface AppState {
   setHdhrTunerIp: (ip: string) => void
 
   // Series Browser
+  selectedSeries: MediaItem | null
+  setSelectedSeries: (series: MediaItem | null) => void
   seriesSeasons: any[]
   setSeriesSeasons: (seasons: any[]) => void
   activeSeason: any | null
   setActiveSeason: (season: any | null) => void
+  selectedSeason: any | null
+  setSelectedSeason: (season: any | null) => void
   seriesEpisodes: any[]
   setSeriesEpisodes: (episodes: any[]) => void
   seriesLoading: boolean
@@ -449,10 +453,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   setHdhrTunerIp: (ip) => set({ hdhrTunerIp: ip }),
 
   // Series Browser
+  selectedSeries: null,
+  setSelectedSeries: (series) => set({ selectedSeries: series }),
   seriesSeasons: [],
   setSeriesSeasons: (seasons) => set({ seriesSeasons: seasons }),
   activeSeason: null,
   setActiveSeason: (season) => set({ activeSeason: season }),
+  selectedSeason: null,
+  setSelectedSeason: (season) => set({ selectedSeason: season }),
   seriesEpisodes: [],
   setSeriesEpisodes: (episodes) => set({ seriesEpisodes: episodes }),
   seriesLoading: false,
