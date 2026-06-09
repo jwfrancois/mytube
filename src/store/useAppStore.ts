@@ -149,6 +149,14 @@ interface AppState {
   setMiniPlayerMode: (mode: boolean) => void
   setAudioElementRef: (el: HTMLAudioElement | HTMLVideoElement | null) => void
 
+  // Detail Panel
+  detailPanelItem: MediaItem | null
+  setDetailPanelItem: (item: MediaItem | null) => void
+
+  // Playback Queue (for album/audiobook/podcast track queues)
+  playbackQueue: { items: MediaItem[]; currentIndex: number; parentItem: MediaItem | null; queueType: string; repeat: string; shuffle: boolean } | null
+  setPlaybackQueue: (queue: { items: MediaItem[]; currentIndex: number; parentItem: MediaItem | null; queueType: string; repeat: string; shuffle: boolean } | null) => void
+
   // Knowledge Graph view
   showKnowledgeGraph: boolean
   setShowKnowledgeGraph: (show: boolean) => void
@@ -374,6 +382,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   miniPlayerMode: false,
   setMiniPlayerMode: (mode) => set({ miniPlayerMode: mode }),
   setAudioElementRef: (el) => set({ audioElement: el as HTMLAudioElement | null }),
+
+  // Detail Panel
+  detailPanelItem: null,
+  setDetailPanelItem: (item) => set({ detailPanelItem: item }),
+
+  // Playback Queue
+  playbackQueue: null,
+  setPlaybackQueue: (queue) => set({ playbackQueue: queue }),
 
   // Persistent Audio Track
   audioTrack: null,
