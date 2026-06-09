@@ -249,7 +249,7 @@ async function handleJellyfinLiveTV(channelId: string, format: string): Promise<
     }
 
     // Get the channel's stream URL from Jellyfin
-    const deviceId = `mytube-server-${creds.id}`
+    const deviceId = `mytube-server-${creds.userId}`
     const streamUrl = `${creds.serverUrl}/LiveTv/LiveStreamFiles/${channelId}/stream.ts?api_key=${creds.accessToken}&DeviceId=${deviceId}`
 
     if (format === 'm3u8') {
