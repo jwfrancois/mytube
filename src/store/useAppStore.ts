@@ -52,6 +52,10 @@ export interface MediaItem {
   audioCodec?: string
   channels?: number
   bitRate?: number
+  // Internal podcast routing fields
+  _parentId?: string
+  _podcastAudioIds?: string[]
+  _podcastArtistId?: string
 }
 
 export interface RadioStation {
