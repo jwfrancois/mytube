@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Media {
+  id          String   @id @default(cuid())
+  title       String
+  description String   @default("")
+  type        String   // MOVIE, TV_SHOW, MUSIC
+  genre       String   @default("")
+  thumbnail   String   @default("")
+  videoUrl    String   @default("")
+  duration    String   @default("")
+  releaseYear Int      @default(2024)
+  artist      String   @default("")
+  views       Int      @default(0)
+  channel       String         @default("")
+  playlistItems PlaylistItem[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model Playlist {
+  id          String          @id @default(cuid())
+  name        String
+  description String          @default("")
+  items       PlaylistItem[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model PlaylistItem {
+  id         String   @id @default(cuid())
+  playlistId String
+  mediaId    String
+  order      Int      @default(0)
+  playlist   Playlist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  media      Media    @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, mediaId, order])
+}
+
+model JellyfinServer {
+  id            String   @id @default(cuid())
+  name          String   @default("My Jellyfin")
+  serverUrl     String
+  userId        String   @default("")
+  accessToken   String   @default("")
+  username      String   @default("")
+  connected     Boolean  @default(false)
+  lastConnected DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
