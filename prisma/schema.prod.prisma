@@ -69,3 +69,16 @@ model MediaCache {
   @@index([cacheKey])
   @@index([expiresAt])
 }
+
+model UserActivity {
+  id         String   @id @default(cuid())
+  jellyfinId String
+  title      String
+  type       String   @default("MOVIE")
+  thumbnail  String   @default("")
+  action     String   // "play", "like", etc.
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([jellyfinId, action])
+}
