@@ -83,7 +83,7 @@ export function MiniPlayer() {
       audio.removeEventListener('pause', onPause)
       audio.removeEventListener('ended', onEnded)
     }
-  }, [audioElement]
+  }, [audioElement])
 
   const togglePlay = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
