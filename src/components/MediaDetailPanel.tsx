@@ -591,7 +591,7 @@ function PersonDetail({
                     isJellyfin: true,
                     jellyfinId: fi.jellyfinId,
                     itemType: fi.type,
-                    communityRating: fi.communityRating,
+                    communityRating: fi.communityRating ?? undefined,
                     studios: fi.studios,
                   }
                   setDetailPanelItem(newItem)
@@ -670,7 +670,7 @@ function FilmographyRow({ items, label }: { items: SimilarItem[]; label: string 
                 itemType: si.itemType || si.type,
                 hasChildren: si.hasChildren,
                 childCount: si.childCount,
-                communityRating: si.communityRating,
+                communityRating: si.communityRating ?? undefined,
                 studios: si.studios,
               }
               setDetailPanelItem(newItem)
@@ -921,7 +921,7 @@ function DigitalMusicMuseum({
                             isJellyfin: true,
                             jellyfinId: a.jellyfinId,
                             itemType: 'MusicAlbum',
-                            communityRating: a.communityRating,
+                            communityRating: a.communityRating ?? undefined,
                           }
                           setDetailPanelItem(newItem)
                         }
