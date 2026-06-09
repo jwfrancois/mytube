@@ -132,7 +132,7 @@ const ACCENT_STYLES: Record<Category, {
 
 // --- News Card Component ---
 
-function NewsCard({ item, styles }: { item: NewsItem; styles: ACCENT_STYLES[Category] }) {
+function NewsCard({ item, styles }: { item: NewsItem; styles: (typeof ACCENT_STYLES)[Category] }) {
   const formattedDate = (() => {
     try {
       const d = new Date(item.date)
