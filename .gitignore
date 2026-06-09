@@ -54,7 +54,7 @@ prisma/*.db-journal
 next-env.d.ts
 local-*
 .claude
-.z-ai-config
+# .z-ai-config  -- needed by z-ai-web-dev-sdk on Vercel
 *.log
 dev.log
 dev.out.log
