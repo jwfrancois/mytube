@@ -1,15 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
-
-// ── Singleton ZAI instance ────────────────────────────────────────────────────
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
-
-async function getZAI() {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create()
-  }
-  return zaiInstance
-}
+import { chatCompletion } from '@/lib/openai'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -145,16 +135,13 @@ IMPORTANT:
 
     // Call LLM
     try {
-      const zai = await getZAI()
-
       const result = await withTimeout(
         (async () => {
-          const completion = await zai.chat.completions.create({
+          const completion = await chatCompletion({
             messages: [
               { role: 'assistant', content: systemPrompt },
               { role: 'user', content: userMessage },
             ],
-            thinking: { type: 'disabled' },
           })
           return completion.choices[0]?.message?.content || ''
         })(),

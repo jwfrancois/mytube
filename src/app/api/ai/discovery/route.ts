@@ -1,6 +1,6 @@
 import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { chatCompletion } from '@/lib/openai'
 
 // --- Types ---
 
@@ -293,8 +293,6 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const zai = await ZAI.create()
-
       const discoveryPrompt =
         type === 'semantic'
           ? `Perform a SEMANTIC search. Understand the CONCEPT behind the user's query, not just keywords. For example, "humanity overcoming impossible odds" could match sci-fi survival, sports underdogs, war dramas, etc. Look beyond genre labels to find thematic resonance.`
@@ -326,12 +324,11 @@ Available catalog (${catalog.length} items):
 ${JSON.stringify(catalog)}`
 
       // Set a 25s timeout for LLM call (semantic search may need more time)
-      const llmPromise = zai.chat.completions.create({
+      const llmPromise = chatCompletion({
         messages: [
           { role: 'assistant', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        thinking: { type: 'disabled' },
       })
 
       const llmTimeoutPromise = new Promise<never>((_, reject) =>

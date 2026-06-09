@@ -1,6 +1,6 @@
 import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { chatCompletion } from '@/lib/openai'
 
 // --- Type mapping helpers (consistent with /api/jellyfin/items) ---
 
@@ -282,8 +282,6 @@ export async function POST(request: NextRequest) {
     let llmResult: { itemIds: string[]; interpretation: string; suggestions: string[] }
 
     try {
-      const zai = await ZAI.create()
-
       const systemPrompt = `You are an intelligent media concierge for a personal streaming library. Given a user's natural language request and a catalog of available media, find the best matches.
 
 Return a JSON object with:
@@ -301,12 +299,11 @@ Available catalog (${catalog.length} items):
 ${JSON.stringify(catalog)}`
 
       // Set a 20s timeout for LLM call
-      const llmPromise = zai.chat.completions.create({
+      const llmPromise = chatCompletion({
         messages: [
           { role: 'assistant', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        thinking: { type: 'disabled' },
       })
 
       const llmTimeoutPromise = new Promise<never>((_, reject) =>

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { chatCompletion } from '@/lib/openai'
 
 // --- Types ---
 
@@ -31,18 +31,7 @@ function isCacheValid(entry: CacheEntry | undefined): boolean {
   return Date.now() - entry.timestamp < CACHE_TTL
 }
 
-// --- Category search queries ---
-
-const CATEGORY_QUERIES: Record<string, string> = {
-  movies:
-    'trending movies news today box office results new movie releases 2025',
-  tv:
-    'trending TV shows news today new series releases streaming 2025',
-  music:
-    'trending music news today new album releases charts 2025',
-  gaming:
-    'trending gaming news today new game releases video game updates 2025',
-}
+// --- Valid categories ---
 
 const VALID_CATEGORIES = ['movies', 'tv', 'music', 'gaming']
 
@@ -67,44 +56,59 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ items: cached!.items, cached: true })
     }
 
-    // Search using z-ai-web-dev-sdk
-    const query = CATEGORY_QUERIES[category] || CATEGORY_QUERIES.movies
+    // Generate trending entertainment news using OpenAI
     let items: NewsItem[] = []
 
     try {
-      const zai = await ZAI.create()
-      const results: any = await zai.functions.invoke('web_search', {
-        query,
-        num: 10,
+      const categoryLabels: Record<string, string> = {
+        movies: 'movies and film',
+        tv: 'TV shows and streaming',
+        music: 'music and albums',
+        gaming: 'video games and gaming',
+      }
+
+      const completion = await chatCompletion({
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a trending entertainment news aggregator. Generate realistic, current trending news items. Return ONLY valid JSON with no markdown. The JSON should be an object with an "items" array, where each item has: title (string), snippet (2-3 sentence summary), url (realistic URL or #), source (news source name), date (YYYY-MM-DD format). Base items on real current trends if possible, or realistic projections.',
+          },
+          {
+            role: 'user',
+            content: `Generate 8-10 trending ${categoryLabels[category] || category} news stories for today (${new Date().toISOString().split('T')[0]}). Include a mix of breaking news, releases, announcements, and industry updates. Return JSON with "items" array.`,
+          },
+        ],
+        temperature: 0.8,
+        max_tokens: 2000,
       })
 
-      // Parse web search results into structured NewsItems
-      if (Array.isArray(results)) {
-        items = results.map((result: any, idx: number) => ({
-          title: result.title || result.name || `Trending ${category} story ${idx + 1}`,
-          snippet: result.snippet || result.content || result.description || '',
-          url: result.url || result.link || '#',
-          source: result.source || result.site || 'Web',
-          date: result.date || result.published || new Date().toISOString().split('T')[0],
+      const content = completion.choices[0]?.message?.content || ''
+      let jsonStr = content.trim()
+      const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/)
+      if (jsonMatch) jsonStr = jsonMatch[1].trim()
+
+      const parsed = JSON.parse(jsonStr)
+      if (Array.isArray(parsed.items)) {
+        items = parsed.items.map((result: any, idx: number) => ({
+          title: result.title || `Trending ${category} story ${idx + 1}`,
+          snippet: result.snippet || '',
+          url: result.url || '#',
+          source: result.source || 'Web',
+          date: result.date || new Date().toISOString().split('T')[0],
           category,
         }))
-      } else if (results && typeof results === 'object') {
-        // Handle object response (some SDK versions return { results: [...] })
-        const resultList = results.results || results.items || results.data || []
-        if (Array.isArray(resultList)) {
-          items = resultList.map((result: any, idx: number) => ({
-            title: result.title || result.name || `Trending ${category} story ${idx + 1}`,
-            snippet: result.snippet || result.content || result.description || '',
-            url: result.url || result.link || '#',
-            source: result.source || result.site || 'Web',
-            date: result.date || result.published || new Date().toISOString().split('T')[0],
-            category,
-          }))
-        }
+      } else if (Array.isArray(parsed)) {
+        items = parsed.map((result: any, idx: number) => ({
+          title: result.title || `Trending ${category} story ${idx + 1}`,
+          snippet: result.snippet || '',
+          url: result.url || '#',
+          source: result.source || 'Web',
+          date: result.date || new Date().toISOString().split('T')[0],
+          category,
+        }))
       }
     } catch (searchError) {
-      console.error('Web search error for entertainment:', searchError)
-      // Return empty results rather than failing entirely
+      console.error('Entertainment news generation error:', searchError)
     }
 
     // Update cache

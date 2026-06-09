@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { chatCompletion } from '@/lib/openai'
 
 // --- Types ---
 
@@ -123,8 +123,6 @@ export async function POST(request: NextRequest) {
     let picks: DailyPick[]
 
     try {
-      const zai = await ZAI.create()
-
       const systemPrompt = `You are an intelligent daily media curator for a personal streaming app called MyTube. Given a user's watch history and available media, generate personalized daily picks.
 
 You must pick 3-5 items the user would enjoy based on their history and the available catalog. Assign each pick to one of these categories:
@@ -158,12 +156,11 @@ Available media catalog (${catalog.length} items):
 ${JSON.stringify(catalog)}`
 
       // Set a 25s timeout for LLM call
-      const llmPromise = zai.chat.completions.create({
+      const llmPromise = chatCompletion({
         messages: [
           { role: 'assistant', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        thinking: { type: 'disabled' },
       })
 
       const llmTimeoutPromise = new Promise<never>((_, reject) =>

@@ -1,15 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
-
-// ── Singleton ZAI instance ────────────────────────────────────────────────────
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
-
-async function getZAI() {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create()
-  }
-  return zaiInstance
-}
+import { chatCompletion } from '@/lib/openai'
 
 // ── In-memory cache with 2-hour TTL ──────────────────────────────────────────
 interface CacheEntry {
@@ -90,11 +80,9 @@ export async function GET(request: NextRequest) {
   const yearClause = yearNum ? ` from ${yearNum}` : ''
 
   try {
-    const zai = await getZAI()
-
     const summary = await withTimeout(
       (async () => {
-        const completion = await zai.chat.completions.create({
+        const completion = await chatCompletion({
           messages: [
             {
               role: 'assistant',
@@ -106,7 +94,6 @@ export async function GET(request: NextRequest) {
               content: `Write a single compelling one-line teaser (max 120 characters) for the ${typeLabel} "${title}"${yearClause}. Make it catchy and intriguing, like a streaming platform tagline. Do NOT use quotes around your response.`,
             },
           ],
-          thinking: { type: 'disabled' },
         })
 
         return completion.choices[0]?.message?.content?.trim() ?? ''

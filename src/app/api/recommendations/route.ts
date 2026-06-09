@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { chatCompletion } from '@/lib/openai'
 
 // Cache recommendations for 30 minutes
 const recsCache = new Map<string, { data: any; timestamp: number }>()
@@ -21,23 +22,36 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(cached.data)
     }
 
-    // Use z-ai-web-dev-sdk for web search recommendations
-    const ZAI = (await import('z-ai-web-dev-sdk')).default
-    const zai = await ZAI.create()
-
+    // Use OpenAI for recommendations
     const typeLabel = type === 'TV_SHOW' ? 'TV show' : type === 'MUSIC' ? 'music album' : type.toLowerCase()
-    const query = `movies like ${title} recommendations similar ${typeLabel}s`
 
-    const results: any = await zai.functions.invoke('web_search', {
-      query,
-      num: 8,
+    const completion = await chatCompletion({
+      messages: [
+        {
+          role: 'system',
+          content: 'You are a media recommendation engine. Given a title and type, suggest similar media the user might enjoy. Return ONLY valid JSON with no markdown. The JSON should be an object with a "recommendations" array, where each item has: title (string), description (1-2 sentence description), reason (why it is similar).',
+        },
+        {
+          role: 'user',
+          content: `Suggest 8 media titles similar to "${title}" (${typeLabel}). Include a mix of well-known and lesser-known recommendations. Return JSON with "recommendations" array containing objects with title, description, and reason fields.`,
+        },
+      ],
+      temperature: 0.7,
+      max_tokens: 1500,
     })
 
-    // Format recommendations from web search results
-    const recommendations = (results || []).map((item: any, idx: number) => ({
-      id: `rec-${idx}-${encodeURIComponent(item.name)}`,
-      title: item.name || 'Recommendation',
-      description: item.snippet || '',
+    const content = completion.choices[0]?.message?.content || ''
+    let jsonStr = content.trim()
+    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/)
+    if (jsonMatch) jsonStr = jsonMatch[1].trim()
+
+    const parsed = JSON.parse(jsonStr)
+    const recsList = Array.isArray(parsed) ? parsed : (parsed.recommendations || [])
+
+    const recommendations = recsList.slice(0, 8).map((item: any, idx: number) => ({
+      id: `rec-${idx}-${encodeURIComponent(item.title || 'item')}`,
+      title: item.title || 'Recommendation',
+      description: item.description || item.reason || '',
       type,
       genre: '',
       thumbnail: '',
@@ -46,11 +60,11 @@ export async function GET(request: NextRequest) {
       releaseYear: 0,
       artist: '',
       views: 0,
-      channel: item.host_name || '',
+      channel: '',
       isJellyfin: false,
       isRecommendation: true,
-      url: item.url || '',
-      source: item.host_name || 'web',
+      url: '',
+      source: 'AI',
     }))
 
     const result = { recommendations }

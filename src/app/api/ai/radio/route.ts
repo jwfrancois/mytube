@@ -1,6 +1,6 @@
 import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { chatCompletion } from '@/lib/openai'
 
 // --- Types ---
 
@@ -278,8 +278,6 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const zai = await ZAI.create()
-
       const systemPrompt = `You are a DJ and music curator for a personal music library. Given a radio station concept and a catalog of available tracks, create the perfect playlist.
 
 For mood stations: Select tracks that evoke the specified mood. Consider tempo, genre, and overall feel.
@@ -299,12 +297,11 @@ Available tracks (${catalog.length} tracks):
 ${JSON.stringify(catalog)}`
 
       // Set a 20s timeout for LLM call
-      const llmPromise = zai.chat.completions.create({
+      const llmPromise = chatCompletion({
         messages: [
           { role: 'assistant', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        thinking: { type: 'disabled' },
       })
 
       const llmTimeoutPromise = new Promise<never>((_, reject) =>

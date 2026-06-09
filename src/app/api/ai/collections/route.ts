@@ -1,6 +1,6 @@
 import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { chatCompletion } from '@/lib/openai'
 
 // --- Types ---
 
@@ -259,8 +259,6 @@ async function generateAutoCollections(
   })
 
   try {
-    const zai = await ZAI.create()
-
     const systemPrompt = `You are a smart media library curator. Given a catalog of available media items, generate 5-8 diverse and creative themed collections.
 
 Each collection should:
@@ -282,12 +280,11 @@ IMPORTANT: Return ONLY valid JSON, no markdown or extra text. Only use item IDs 
     const userPrompt = `Generate themed collections from this catalog (${catalog.length} items):
 ${JSON.stringify(catalog)}`
 
-    const llmPromise = zai.chat.completions.create({
+    const llmPromise = chatCompletion({
       messages: [
         { role: 'assistant', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      thinking: { type: 'disabled' },
     })
 
     const llmTimeoutPromise = new Promise<never>((_, reject) =>

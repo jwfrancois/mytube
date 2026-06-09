@@ -110,3 +110,87 @@ Stage Summary:
 - Stats Dashboard: Personal watch analytics with CSS charts
 - Daily AI Picks: AI-curated daily recommendations
 - Media Trivia: Interactive fun facts and quiz mode
+
+---
+Task ID: 6
+Agent: Migration Agent
+Task: Migrate 9 AI chat route files from z-ai-web-dev-sdk to OpenAI
+
+Work Log:
+- Migrated all 9 API route files to use `chatCompletion` from `@/lib/openai` instead of `ZAI.create()` / `getZAI()`
+- Files migrated:
+  1. src/app/api/ai/summary/route.ts — removed ZAI import, zaiInstance singleton, getZAI(); replaced with chatCompletion
+  2. src/app/api/ai/companion/route.ts — removed ZAI import; replaced ZAI.create() + zai.chat.completions.create with chatCompletion
+  3. src/app/api/ai/discovery/route.ts — same pattern as companion
+  4. src/app/api/ai/radio/route.ts — same pattern as companion
+  5. src/app/api/ai/collections/route.ts — same pattern as companion (LLM call inside generateAutoCollections)
+  6. src/app/api/ai/daily-picks/route.ts — same pattern as companion
+  7. src/app/api/ai/concierge/route.ts — same pattern as companion
+  8. src/app/api/ai/trivia/route.ts — removed ZAI import, zaiInstance singleton, getZAI(); replaced with chatCompletion
+  9. src/app/api/ai/route.ts — removed ZAI import, zaiInstance singleton, getZAI(); replaced with chatCompletion
+- For each file: removed `import ZAI from 'z-ai-web-dev-sdk'`, removed singleton/getZAI boilerplate, added `import { chatCompletion } from '@/lib/openai'`, replaced `zai.chat.completions.create({ messages, thinking: { type: 'disabled' } })` with `chatCompletion({ messages })`, removed `const zai = await ZAI.create()` / `const zai = await getZAI()` lines
+- Verified: no remaining references to z-ai-web-dev-sdk, ZAI.create, getZAI, or zaiInstance in any AI route files
+
+Stage Summary:
+- All 9 AI route files successfully migrated from z-ai-web-dev-sdk to OpenAI via the chatCompletion helper
+- Zero remaining z-ai-web-dev-sdk imports in the AI route layer
+- The `thinking: { type: 'disabled' }` option (ZAI-specific) has been removed from all calls
+
+---
+Task ID: 8
+Agent: Migration Agent
+Task: Migrate entertainment route from z-ai-web-dev-sdk to OpenAI
+
+Work Log:
+- Replaced `import ZAI from 'z-ai-web-dev-sdk'` with `import { chatCompletion } from '@/lib/openai'`
+- Removed CATEGORY_QUERIES constant (no longer needed — LLM generates content by category label)
+- Replaced z-ai-web-dev-sdk web_search try block with OpenAI chatCompletion call
+- System prompt instructs AI to generate 8-10 trending entertainment news items as JSON
+- User prompt includes category label (movies/film, TV/streaming, music/albums, gaming) and today's date
+- Response parsing handles both `{ items: [...] }` and bare `[...]` JSON shapes, plus markdown code fences
+- Kept same cache behavior (30-min TTL), error handling, and NewsItem structure
+- No changes to types, cache logic, or API response format
+
+Stage Summary:
+- Entertainment route fully migrated from z-ai-web-dev-sdk to OpenAI
+- API contract unchanged: same URL params, same response shape { items: NewsItem[], cached: boolean }
+- LLM-generated news replaces web search results
+
+---
+Task ID: 5
+Agent: Migration Agent
+Task: Migrate /api/recommendations route from z-ai-web-dev-sdk to OpenAI
+
+Work Log:
+- Read current route.ts: used dynamic import of ZAI + zai.functions.invoke('web_search') for recommendations
+- Added `import { chatCompletion } from '@/lib/openai'` at top of file
+- Removed dynamic ZAI import and web search invocation (old lines 24-54)
+- Replaced with OpenAI chatCompletion call that generates recommendations as structured JSON
+- LLM prompt asks for 8 similar media titles with title, description, and reason fields
+- Added JSON extraction logic to handle markdown-wrapped responses
+- Mapped LLM output to same recommendation schema (source field now 'AI' instead of host_name)
+- Preserved 30-minute cache, error handling, and query param interface unchanged
+
+Stage Summary:
+- Recommendations route fully migrated from z-ai-web-dev-sdk to OpenAI
+- No remaining z-ai-web-dev-sdk references in this file
+- API contract unchanged (same query params and response shape)
+
+---
+Task ID: 4
+Agent: Migration Agent
+Task: Migrate /api/metadata route from z-ai-web-dev-sdk to OpenAI
+
+Work Log:
+- Removed `import ZAI from 'z-ai-web-dev-sdk'`, `zaiInstance` singleton, and `getZAI()` function
+- Added `import { chatCompletion } from '@/lib/openai'`
+- Replaced `searchWeb(zai, query)`: removed zai parameter; replaced `zai.functions.invoke('web_search', ...)` with `chatCompletion()` using a media search assistant system prompt (temperature 0.3, max_tokens 800)
+- Replaced `enrichWithLLM(zai, ...)`: removed zai parameter; replaced `zai.chat.completions.create({ messages, thinking: { type: 'disabled' } })` with `chatCompletion({ messages })`; removed `thinking: { type: 'disabled' }` option
+- Updated GET handler: removed `const zai = await getZAI()`; updated calls to `searchWeb(searchQuery)` and `enrichWithLLM(title, type, year, searchResults)` (no zai parameter)
+- Fixed type error in `chatCompletion` helper: added function overloads so non-stream calls resolve to `Promise<OpenAI.ChatCompletion>` instead of the streaming union type, eliminating `Property 'choices' does not exist` errors across all consuming routes
+- Verified: `tsc --noEmit` passes clean for both modified files; no remaining z-ai-web-dev-sdk references in metadata route
+
+Stage Summary:
+- Metadata route fully migrated from z-ai-web-dev-sdk to OpenAI
+- chatCompletion helper improved with overloads for better type safety (fixes type errors in all routes)
+- API contract unchanged (same query params, cache, and response shape)

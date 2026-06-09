@@ -1,6 +1,6 @@
 import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
+import { chatCompletion } from '@/lib/openai'
 
 // --- Types ---
 
@@ -145,8 +145,6 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      const zai = await ZAI.create()
-
       const spoilerNote = enableSpoilerProtection
         ? `The viewer is currently at ${currentTime ? `${Math.floor(currentTime / 60)}m ${Math.floor(currentTime % 60)}s into the content` : 'an unknown point in the content'}. IMPORTANT: Do NOT reveal any plot points, twists, or events that happen AFTER the current playback position. If the user asks about something that would be a spoiler, give a vague hint and add "spoilerWarning": true in your response.`
         : 'Spoiler protection is disabled. You may discuss the full plot including endings.'
@@ -185,12 +183,11 @@ IMPORTANT: Return ONLY valid JSON, no markdown or extra text.`
       const userPrompt = `User question: "${query}"`
 
       // Set a 20s timeout for LLM call
-      const llmPromise = zai.chat.completions.create({
+      const llmPromise = chatCompletion({
         messages: [
           { role: 'assistant', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        thinking: { type: 'disabled' },
       })
 
       const llmTimeoutPromise = new Promise<never>((_, reject) =>

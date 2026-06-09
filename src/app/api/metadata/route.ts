@@ -1,15 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
-
-// ── Singleton ZAI instance ────────────────────────────────────────────────────
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
-
-async function getZAI() {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create()
-  }
-  return zaiInstance
-}
+import { chatCompletion } from '@/lib/openai'
 
 // ── In-memory cache with 1-hour TTL ──────────────────────────────────────────
 interface CacheEntry {
@@ -65,38 +55,25 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 }
 
 // ── Web search ────────────────────────────────────────────────────────────────
-async function searchWeb(
-  zai: Awaited<ReturnType<typeof ZAI.create>>,
-  query: string
-): Promise<string> {
+async function searchWeb(query: string): Promise<string> {
   try {
-    const results: any = await zai.functions.invoke('web_search', {
-      query,
-      num: 5,
+    const completion = await chatCompletion({
+      messages: [
+        { role: 'system', content: 'You are a media search assistant. Given a query, provide concise factual information about the media title. Include key details like plot, cast, ratings, and reception. Keep to 3-4 paragraphs.' },
+        { role: 'user', content: `Provide detailed information about: ${query}` },
+      ],
+      temperature: 0.3,
+      max_tokens: 800,
     })
-    if (!results) return ''
-    // Results may be an array of objects or a string – handle both
-    if (typeof results === 'string') return results
-    if (Array.isArray(results)) {
-      return results
-        .map((r: Record<string, unknown>) => {
-          const title = r.title ?? ''
-          const snippet = r.snippet ?? r.content ?? r.body ?? ''
-          const url = r.url ?? r.link ?? ''
-          return `Title: ${title}\nSnippet: ${snippet}\nURL: ${url}`
-        })
-        .join('\n\n')
-    }
-    return JSON.stringify(results)
+    return completion.choices[0]?.message?.content || ''
   } catch (err) {
-    console.error('Web search failed:', err)
+    console.error('Search failed:', err)
     return ''
   }
 }
 
 // ── LLM enrichment ────────────────────────────────────────────────────────────
 async function enrichWithLLM(
-  zai: Awaited<ReturnType<typeof ZAI.create>>,
   title: string,
   type: string,
   year: string | undefined,
@@ -149,12 +126,11 @@ Return ONLY valid JSON (no markdown, no code fences, no commentary) with these f
 }`
 
   try {
-    const completion = await zai.chat.completions.create({
+    const completion = await chatCompletion({
       messages: [
         { role: 'assistant', content: 'You are a precise JSON-producing media metadata API. You always return valid JSON with no extra text.' },
         { role: 'user', content: prompt },
       ],
-      thinking: { type: 'disabled' },
     })
 
     const content = completion.choices[0]?.message?.content
@@ -211,8 +187,6 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const zai = await getZAI()
-
     // Run the full enrichment pipeline with a 30-second timeout
     const enriched = await withTimeout(
       (async () => {
@@ -228,10 +202,10 @@ export async function GET(request: NextRequest) {
           }[type] ?? 'media'
 
         const searchQuery = `${title} ${typeLabel}${year ? ` ${year}` : ''} review rating synopsis`
-        const searchResults = await searchWeb(zai, searchQuery)
+        const searchResults = await searchWeb(searchQuery)
 
         // Step 2: LLM enrichment
-        const metadata = await enrichWithLLM(zai, title, type, year, searchResults)
+        const metadata = await enrichWithLLM(title, type, year, searchResults)
 
         return metadata
       })(),

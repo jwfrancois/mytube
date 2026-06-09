@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import ZAI from 'z-ai-web-dev-sdk'
-
-let zaiInstance: Awaited<ReturnType<typeof ZAI.create>> | null = null
-
-async function getZAI() {
-  if (!zaiInstance) {
-    zaiInstance = await ZAI.create()
-  }
-  return zaiInstance
-}
+import { chatCompletion } from '@/lib/openai'
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,8 +9,6 @@ export async function POST(request: NextRequest) {
     if (!message || typeof message !== 'string') {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     }
-
-    const zai = await getZAI()
 
     const systemPrompt = `You are the MyTube AI Concierge — a sophisticated, knowledgeable, and friendly media assistant for the MyTube streaming platform. You help users discover movies, TV shows, music, and live TV content.
 
@@ -50,9 +39,8 @@ Guidelines:
       { role: 'user' as const, content: message },
     ]
 
-    const completion = await zai.chat.completions.create({
+    const completion = await chatCompletion({
       messages,
-      thinking: { type: 'disabled' },
     })
 
     const response = completion.choices[0]?.message?.content
