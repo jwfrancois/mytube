@@ -30,7 +30,7 @@ export function MiniPlayer() {
   const {
     currentMedia,
     setCurrentMedia,
-    audioElementRef,
+    audioElement,
     miniPlayerMode,
     setMiniPlayerMode,
     playNext,
@@ -44,7 +44,7 @@ export function MiniPlayer() {
 
   // Sync with audio element time updates
   useEffect(() => {
-    const audio = audioElementRef
+    const audio = audioElement
     if (!audio) return
 
     const onTimeUpdate = () => {
@@ -83,11 +83,11 @@ export function MiniPlayer() {
       audio.removeEventListener('pause', onPause)
       audio.removeEventListener('ended', onEnded)
     }
-  }, [audioElementRef])
+  }, [audioElement]
 
   const togglePlay = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    const audio = useAppStore.getState().audioElementRef
+    const audio = useAppStore.getState().audioElement
     if (!audio) return
     if (audio.paused) {
       audio.play().catch(() => {})
@@ -112,7 +112,7 @@ export function MiniPlayer() {
 
   const handleClose = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    const audio = useAppStore.getState().audioElementRef
+    const audio = useAppStore.getState().audioElement
     if (audio) {
       audio.pause()
       audio.currentTime = 0
@@ -122,7 +122,7 @@ export function MiniPlayer() {
   }, [setMiniPlayerMode, setCurrentMedia])
 
   const handleSeek = useCallback((value: number[]) => {
-    const audio = useAppStore.getState().audioElementRef
+    const audio = useAppStore.getState().audioElement
     if (!audio || !duration) return
     audio.currentTime = (value[0] / 100) * duration
     setCurrentTime((value[0] / 100) * duration)
