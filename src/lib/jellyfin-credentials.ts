@@ -29,7 +29,7 @@ interface JellyfinCreds {
   username: string
   connected: boolean
   serverId: string
-  name?: string
+  name: string
 }
 
 /**
@@ -69,6 +69,7 @@ export async function getJellyfinCredentials(): Promise<JellyfinCreds | null> {
         username: server.username,
         connected: true,
         serverId: server.serverUrl.includes('manitou') ? '363ac50118644e63bddcd34c6dc063a9' : '',
+        name: server.name || 'My Jellyfin',
       }
 
       // Step 2: Validate the token with a lightweight API call
@@ -160,6 +161,7 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
       username: process.env.JELLYFIN_USERNAME || 'user',
       connected: true,
       serverId: '',
+      name: 'My Jellyfin',
     }
 
     // Validate the direct token before using it
@@ -231,6 +233,7 @@ async function autoConnectFromEnv(): Promise<JellyfinCreds | null> {
       username: User.Name || username,
       connected: true,
       serverId: ServerId || '',
+      name: 'My Jellyfin',
     }
 
     // Save to database for future requests (non-fatal if it fails)
@@ -289,6 +292,7 @@ export function setCredentialsFromClient(credentials: ClientCredentials): void {
     username: 'user',
     connected: true,
     serverId: '',
+    name: 'My Jellyfin',
   }
   validatedAt = Date.now()
 }
