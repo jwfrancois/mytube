@@ -227,10 +227,10 @@ function HeaderSection({
                   <span>{series.studios.slice(0, 2).join(', ')}</span>
                 )}
                 {isSeriesType(series) && (series.childCount ?? 0) > 0 && (
-                  <span>{series.childCount} season{series.childCount > 1 ? 's' : ''}</span>
+                  <span>{series.childCount ?? 0} season{(series.childCount ?? 0) > 1 ? 's' : ''}</span>
                 )}
                 {isCollectionType(series) && (series.childCount ?? 0) > 0 && (
-                  <span>{series.childCount} item{series.childCount > 1 ? 's' : ''}</span>
+                  <span>{series.childCount ?? 0} item{(series.childCount ?? 0) > 1 ? 's' : ''}</span>
                 )}
               </div>
             )}
