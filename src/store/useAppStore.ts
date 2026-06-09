@@ -45,6 +45,13 @@ export interface MediaItem {
   episodeNumber?: number
   seasonNumber?: number
   tags?: string[]
+  // Video metadata
+  width?: number
+  height?: number
+  videoCodec?: string
+  audioCodec?: string
+  channels?: number
+  bitRate?: number
 }
 
 export interface RadioStation {
