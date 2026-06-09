@@ -79,3 +79,32 @@ model UserActivity {
 
   @@unique([jellyfinId, action])
 }
+
+model HDHomerunTuner {
+  id            String   @id @default(cuid())
+  tunerIp       String   @unique
+  name          String   @default("HDHomeRun")
+  model         String   @default("")
+  firmware      String   @default("")
+  deviceId      String   @default("")
+  tunerCount    Int      @default(2)
+  connected     Boolean  @default(false)
+  lastConnected DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model WatchLaterItem {
+  id               String   @id @default(cuid())
+  jellyfinId       String   @unique
+  title            String
+  type             String   @default("MOVIE")
+  thumbnail        String   @default("")
+  overview         String   @default("")
+  genre            String   @default("")
+  releaseYear      Int      @default(0)
+  duration         String   @default("")
+  communityRating  Float    @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
