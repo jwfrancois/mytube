@@ -162,7 +162,9 @@ interface AppState {
 
   // Audio Player extended state (used by AudioPlayer component)
   playQueue: MediaItem[]
+  setPlayQueue: (items: MediaItem[]) => void
   queueIndex: number
+  setQueueIndex: (index: number) => void
   shuffleMode: 'on' | 'off'
   setShuffleMode: (mode: 'on' | 'off') => void
   playQueueItem: (index: number) => void
@@ -411,7 +413,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Audio Player extended state
   playQueue: [],
+  setPlayQueue: (items) => set({ playQueue: items }),
   queueIndex: -1,
+  setQueueIndex: (index) => set({ queueIndex: index }),
   shuffleMode: 'off',
   setShuffleMode: (mode) => set({ shuffleMode: mode, shuffleEnabled: mode === 'on' }),
   playQueueItem: (index) => {
