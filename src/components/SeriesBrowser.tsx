@@ -218,7 +218,7 @@ function HeaderSection({
             )}
 
             {/* Additional metadata */}
-            {(series.officialRating || series.studios?.length || series.childCount > 0) && (
+            {(series.officialRating || series.studios?.length || (series.childCount ?? 0) > 0) && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
                 {series.officialRating && (
                   <span className="px-1.5 py-0.5 rounded border border-border/50 font-medium">{series.officialRating}</span>
@@ -226,10 +226,10 @@ function HeaderSection({
                 {series.studios && series.studios.length > 0 && (
                   <span>{series.studios.slice(0, 2).join(', ')}</span>
                 )}
-                {isSeriesType(series) && series.childCount > 0 && (
+                {isSeriesType(series) && (series.childCount ?? 0) > 0 && (
                   <span>{series.childCount} season{series.childCount > 1 ? 's' : ''}</span>
                 )}
-                {isCollectionType(series) && series.childCount > 0 && (
+                {isCollectionType(series) && (series.childCount ?? 0) > 0 && (
                   <span>{series.childCount} item{series.childCount > 1 ? 's' : ''}</span>
                 )}
               </div>
