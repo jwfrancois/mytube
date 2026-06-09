@@ -15,12 +15,14 @@ export async function GET(request: NextRequest) {
     const searchTerm = searchParams.get('search')
     const parentCollectionType = searchParams.get('collectionType') || ''
 
-    // Build cache key
+    // Build cache key (non-fatal)
     const cacheKey = `items-${parentId || ''}-${searchTerm || ''}-${parentCollectionType}`
-    const cached = await mediaCache.get(cacheKey)
-    if (cached) {
-      return NextResponse.json(cached)
-    }
+    try {
+      const cached = await mediaCache.get(cacheKey)
+      if (cached) {
+        return NextResponse.json(cached)
+      }
+    } catch {}
 
     let url: string
 
@@ -107,8 +109,8 @@ export async function GET(request: NextRequest) {
 
     const result = { items, totalRecordCount: data.TotalRecordCount }
 
-    // Cache for 2 minutes (shorter TTL for browsed items since they change more)
-    await mediaCache.set(cacheKey, result, 120)
+    // Cache for 2 minutes (shorter TTL for browsed items, non-fatal)
+    try { await mediaCache.set(cacheKey, result, 120) } catch {}
 
     return NextResponse.json(result)
   } catch (error) {

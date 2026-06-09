@@ -1,7 +1,6 @@
-import { db } from '@/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
-import { mediaCache } from '@/lib/media-cache'
 import { fetchJellyfinCategoryItems, fetchAllJellyfinItems } from '@/lib/jellyfin-category'
+import { mediaCache } from '@/lib/media-cache'
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,28 +12,39 @@ export async function GET(request: NextRequest) {
     const offset = parseInt(searchParams.get('offset') || '0')
     const includeJellyfin = searchParams.get('includeJellyfin') === 'true'
 
-    // Check DB-backed cache
+    // Check DB-backed cache (non-fatal if it fails)
     const cacheKey = `media-${type || 'all'}-${genre || 'all'}-${sort}-${limit}-${offset}-${includeJellyfin}`
-    const cached = await mediaCache.get(cacheKey)
-    if (cached) {
-      return NextResponse.json(cached)
+    try {
+      const cached = await mediaCache.get(cacheKey)
+      if (cached) {
+        return NextResponse.json(cached)
+      }
+    } catch (cacheErr) {
+      console.error('Media cache get error (non-fatal):', cacheErr)
     }
 
-    const where: Record<string, string> = {}
-    if (type) where.type = type
-    if (genre) where.genre = genre
+    // Fetch local media from database (non-fatal if it fails)
+    let media: any[] = []
+    let total = 0
+    try {
+      const { db } = await import('@/lib/db')
+      const where: Record<string, string> = {}
+      if (type) where.type = type
+      if (genre) where.genre = genre
 
-    // Fetch local media from database
-    const media = await db.media.findMany({
-      where,
-      orderBy: sort === 'popular' ? { views: 'desc' } : { createdAt: 'desc' },
-      take: limit,
-      skip: offset,
-    })
+      media = await db.media.findMany({
+        where,
+        orderBy: sort === 'popular' ? { views: 'desc' } : { createdAt: 'desc' },
+        take: limit,
+        skip: offset,
+      })
+      total = await db.media.count({ where })
+    } catch (dbErr) {
+      console.error('Local media DB query error (non-fatal):', dbErr)
+      // DB might not be set up yet — continue with just Jellyfin items
+    }
 
-    const total = await db.media.count({ where })
-
-    // If requested, also fetch Jellyfin items DIRECTLY (no internal HTTP fetch!)
+    // Fetch Jellyfin items directly (non-fatal if it fails)
     let jellyfinItems: any[] = []
     let jellyfinTotal = 0
 
@@ -44,18 +54,16 @@ export async function GET(request: NextRequest) {
         const creds = await getJellyfinCredentials()
         if (creds && creds.connected) {
           if (type) {
-            // Specific category — fetch just that type directly from Jellyfin
             const categoryResult = await fetchJellyfinCategoryItems(type, 50)
             jellyfinItems = categoryResult.items || []
             jellyfinTotal = categoryResult.totalRecordCount || 0
           } else {
-            // Home page — fetch all types
             jellyfinItems = await fetchAllJellyfinItems(20)
             jellyfinTotal = jellyfinItems.length
           }
         }
-      } catch (err) {
-        console.error('Failed to fetch Jellyfin items for media endpoint:', err)
+      } catch (jellyfinErr) {
+        console.error('Jellyfin fetch error (non-fatal):', jellyfinErr)
       }
     }
 
@@ -74,12 +82,16 @@ export async function GET(request: NextRequest) {
       jellyfinCount: jellyfinTotal,
     }
 
-    // Cache in DB for 2 minutes
-    await mediaCache.set(cacheKey, result, 120)
+    // Cache in DB for 2 minutes (non-fatal if it fails)
+    try {
+      await mediaCache.set(cacheKey, result, 120)
+    } catch (cacheErr) {
+      console.error('Media cache set error (non-fatal):', cacheErr)
+    }
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error('Error fetching media:', error)
+    console.error('Error fetching media (unhandled):', error)
     return NextResponse.json({ error: 'Failed to fetch media' }, { status: 500 })
   }
 }
@@ -87,6 +99,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const { db } = await import('@/lib/db')
     const media = await db.media.create({
       data: {
         title: body.title,
@@ -104,7 +117,11 @@ export async function POST(request: NextRequest) {
     })
 
     // Invalidate media cache on new media creation
-    await mediaCache.deleteByPrefix('media-')
+    try {
+      await mediaCache.deleteByPrefix('media-')
+    } catch {
+      // Non-fatal
+    }
 
     return NextResponse.json(media, { status: 201 })
   } catch (error) {

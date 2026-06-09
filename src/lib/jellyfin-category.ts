@@ -84,11 +84,15 @@ export async function fetchJellyfinCategoryItems(
       return { items: [], totalRecordCount: 0 }
     }
 
-    // Check DB-backed cache first
+    // Check DB-backed cache first (non-fatal if cache is unavailable)
     const cacheKey = `category-${type}-${limit}`
-    const cached = await mediaCache.get(cacheKey)
-    if (cached) {
-      return cached as JellyfinCategoryResult
+    try {
+      const cached = await mediaCache.get(cacheKey)
+      if (cached) {
+        return cached as JellyfinCategoryResult
+      }
+    } catch (cacheErr) {
+      console.error('Category cache get error (non-fatal):', cacheErr)
     }
 
     const collectionTypes = TYPE_TO_COLLECTION_TYPE[type]
@@ -167,7 +171,7 @@ export async function fetchJellyfinCategoryItems(
             mapJellyfinItem(item, type, 'podcasts', 'Podcasts')
           )
           const result: JellyfinCategoryResult = { items, totalRecordCount: items.length }
-          await mediaCache.set(cacheKey, result, 120)
+          try { await mediaCache.set(cacheKey, result, 120) } catch {}
           return result
         }
       } catch (err) {
@@ -250,8 +254,8 @@ export async function fetchJellyfinCategoryItems(
       totalRecordCount: allItems.length,
     }
 
-    // Cache in DB for 2 minutes
-    await mediaCache.set(cacheKey, result, 120)
+    // Cache in DB for 2 minutes (non-fatal)
+    try { await mediaCache.set(cacheKey, result, 120) } catch {}
 
     // Clean expired cache entries periodically
     if (Math.random() < 0.1) {

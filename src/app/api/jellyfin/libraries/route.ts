@@ -13,12 +13,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const parentId = searchParams.get('parentId')
 
-    // Check cache
+    // Check cache (non-fatal)
     const cacheKey = `libraries-${parentId || 'root'}`
-    const cached = await mediaCache.get(cacheKey)
-    if (cached) {
-      return NextResponse.json(cached)
-    }
+    try {
+      const cached = await mediaCache.get(cacheKey)
+      if (cached) {
+        return NextResponse.json(cached)
+      }
+    } catch {}
 
     let url: string
     if (parentId) {
@@ -105,8 +107,8 @@ export async function GET(request: NextRequest) {
 
     const result = { items, totalRecordCount: data.TotalRecordCount }
 
-    // Cache for 5 minutes (libraries change rarely)
-    await mediaCache.set(cacheKey, result, 300)
+    // Cache for 5 minutes (libraries change rarely, non-fatal)
+    try { await mediaCache.set(cacheKey, result, 300) } catch {}
 
     return NextResponse.json(result)
   } catch (error) {

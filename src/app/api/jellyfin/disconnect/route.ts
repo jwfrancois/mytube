@@ -1,12 +1,20 @@
-import { db } from '@/lib/db'
 import { NextResponse } from 'next/server'
 import { mediaCache } from '@/lib/media-cache'
 
 export async function DELETE() {
   try {
-    await db.jellyfinServer.deleteMany()
+    try {
+      const { db } = await import('@/lib/db')
+      await db.jellyfinServer.deleteMany()
+    } catch (dbErr) {
+      console.error('Jellyfin disconnect DB error (non-fatal):', dbErr)
+    }
     // Clear all cached media data
-    await mediaCache.clear()
+    try {
+      await mediaCache.clear()
+    } catch (cacheErr) {
+      console.error('Jellyfin disconnect cache clear error (non-fatal):', cacheErr)
+    }
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Jellyfin disconnect error:', error)

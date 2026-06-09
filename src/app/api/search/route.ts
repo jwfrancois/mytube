@@ -26,11 +26,17 @@ export async function GET(request: NextRequest) {
       where.type = type
     }
 
-    const media = await db.media.findMany({
-      where,
-      orderBy: { views: 'desc' },
-      take: 20,
-    })
+    // Search local DB (non-fatal if DB unavailable)
+    let media: any[] = []
+    try {
+      media = await db.media.findMany({
+        where,
+        orderBy: { views: 'desc' },
+        take: 20,
+      })
+    } catch (dbErr) {
+      console.error('Local DB search error (non-fatal):', dbErr)
+    }
 
     // Also search Jellyfin if connected
     let jellyfinItems: any[] = []
