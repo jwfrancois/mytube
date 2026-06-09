@@ -216,6 +216,7 @@ export function MediaGrid({ items, onRefresh, sections, onWatchLater, onRemoveWa
     AUDIOBOOK: 'Audiobooks',
     COLLECTION: 'Collections',
     JELLYFIN: 'Jellyfin NAS',
+    RADIO: 'Radio',
   }
 
   if (isLoading) {
