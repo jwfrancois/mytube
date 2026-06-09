@@ -68,7 +68,7 @@ const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
 
 export function AudioPlayer() {
   const {
-    currentMedia, setCurrentMedia, mediaItems, jellyfinItems, jellyfinCatalogItems, seriesEpisodes,
+    currentMedia, setCurrentMedia, mediaItems, jellyfinItems,
     playQueue, queueIndex, repeatMode, setRepeatMode, shuffleMode, setShuffleMode,
     playNext, playPrevious, playQueueItem,
     playbackSpeed, setPlaybackSpeed,
