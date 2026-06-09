@@ -1379,7 +1379,7 @@ export function MediaDetailPanel({ item, onClose }: MediaDetailPanelProps) {
                   <TypeIcon className="h-3 w-3" />
                   {badge.label}
                 </Badge>
-                {(item.releaseYear || peopleData?.itemMetadata?.productionYear) > 0 && (
+                {((item.releaseYear || peopleData?.itemMetadata?.productionYear) ?? 0) > 0 && (
                   <Badge variant="outline" className="text-[11px] font-medium">
                     {item.releaseYear || peopleData?.itemMetadata?.productionYear}
                   </Badge>
