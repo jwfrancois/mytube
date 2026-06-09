@@ -194,6 +194,7 @@ interface AppState {
 
   // Series Browser
   seriesSeasons: any[]
+  setSeriesSeasons: (seasons: any[]) => void
   activeSeason: any | null
   setActiveSeason: (season: any | null) => void
   seriesEpisodes: any[]
@@ -449,6 +450,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Series Browser
   seriesSeasons: [],
+  setSeriesSeasons: (seasons) => set({ seriesSeasons: seasons }),
   activeSeason: null,
   setActiveSeason: (season) => set({ activeSeason: season }),
   seriesEpisodes: [],
