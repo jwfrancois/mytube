@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
  * In a real implementation, this would come from a proper EPG source.
  */
 function generateMockEPG(channel: typeof BUILT_IN_CHANNELS[0], now: Date) {
-  const programs = []
+  const programs: { id: string; title: string; description: string; start: string; end: string; isLive: boolean; isCurrent: boolean }[] = []
   const categories: Record<string, string[]> = {
     news: ['Breaking News', 'World Report', 'Market Update', 'Evening News', 'Morning Brief', 'NewsHour'],
     entertainment: ['Variety Show', 'Behind the Scenes', 'Celebrity Spotlight', 'Pop Culture', 'Entertainment Tonight'],
