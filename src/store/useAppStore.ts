@@ -173,6 +173,27 @@ interface AppState {
   playbackQueue: { items: MediaItem[]; currentIndex: number; parentItem: MediaItem | null; queueType: string; repeat: string; shuffle: boolean } | null
   setPlaybackQueue: (queue: { items: MediaItem[]; currentIndex: number; parentItem: MediaItem | null; queueType: string; repeat: string; shuffle: boolean } | null) => void
 
+  // Live TV
+  liveTVChannels: any[]
+  setLiveTVChannels: (channels: any[]) => void
+  liveTVLoading: boolean
+  setLiveTVLoading: (loading: boolean) => void
+
+  // HDHomeRun
+  hdhrConnected: boolean
+  setHdhrConnected: (connected: boolean) => void
+  hdhrTunerIp: string
+  setHdhrTunerIp: (ip: string) => void
+
+  // Series Browser
+  seriesSeasons: any[]
+  activeSeason: any | null
+  setActiveSeason: (season: any | null) => void
+  seriesEpisodes: any[]
+  setSeriesEpisodes: (episodes: any[]) => void
+  seriesLoading: boolean
+  setSeriesLoading: (loading: boolean) => void
+
   // Knowledge Graph view
   showKnowledgeGraph: boolean
   setShowKnowledgeGraph: (show: boolean) => void
@@ -406,6 +427,27 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Playback Queue
   playbackQueue: null,
   setPlaybackQueue: (queue) => set({ playbackQueue: queue }),
+
+  // Live TV
+  liveTVChannels: [],
+  setLiveTVChannels: (channels) => set({ liveTVChannels: channels }),
+  liveTVLoading: false,
+  setLiveTVLoading: (loading) => set({ liveTVLoading: loading }),
+
+  // HDHomeRun
+  hdhrConnected: false,
+  setHdhrConnected: (connected) => set({ hdhrConnected: connected }),
+  hdhrTunerIp: '',
+  setHdhrTunerIp: (ip) => set({ hdhrTunerIp: ip }),
+
+  // Series Browser
+  seriesSeasons: [],
+  activeSeason: null,
+  setActiveSeason: (season) => set({ activeSeason: season }),
+  seriesEpisodes: [],
+  setSeriesEpisodes: (episodes) => set({ seriesEpisodes: episodes }),
+  seriesLoading: false,
+  setSeriesLoading: (loading) => set({ seriesLoading: loading }),
 
   // Persistent Audio Track
   audioTrack: null,
