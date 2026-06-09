@@ -163,6 +163,7 @@ function useHlsVideoPlayer(
   const [currentSrc, setCurrentSrc] = useState<string | null>(null)
   const retryCountRef = useRef(0)
   const hlsNetworkRetryRef = useRef(0) // track hls.js internal network retries
+  const directUrlRef = useRef<string | null>(null) // fallback direct URL when proxy fails
   const maxRetries = 3
   const loadingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -189,6 +190,7 @@ function useHlsVideoPlayer(
     destroyHls()
     setVideoError(null)
     setVideoLoading(true)
+    directUrlRef.current = null
     if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current)
     loadingTimeoutRef.current = setTimeout(() => {
       console.warn('[VideoPlayer] Safety timeout reached, clearing loading state')
@@ -254,6 +256,16 @@ function useHlsVideoPlayer(
                 console.log(`[VideoPlayer] Retrying network error (attempt ${hlsNetworkRetryRef.current}/2)…`)
                 hls.startLoad()
               } else {
+                // Proxy failed — try the direct URL as a last resort (bypasses proxy,
+                // works if Jellyfin server supports HTTPS and CORS headers)
+                const directUrl = directUrlRef.current
+                if (directUrl && !isLive) {
+                  console.log('[VideoPlayer] Proxy failed, trying direct Jellyfin URL...')
+                  directUrlRef.current = null // prevent infinite loop
+                  destroyHls()
+                  playHlsStream(directUrl, false)
+                  return
+                }
                 // Give up — show user-friendly message
                 destroyHls()
                 if (data.details === 'manifestLoadError') {
@@ -333,8 +345,14 @@ function useHlsVideoPlayer(
       }
 
       // All streams now use HLS through the proxy (avoids CORS issues)
+      // If the proxy fails, the directUrl fallback allows the player to try
+      // the Jellyfin server directly (works if the NAS supports HTTPS/CORS)
       if (data.url) {
         await playHlsStream(data.url, false)
+        // Store the direct URL for fallback if proxy fails
+        if (data.directUrl) {
+          directUrlRef.current = data.directUrl
+        }
       } else {
         throw new Error('No stream URL in response')
       }

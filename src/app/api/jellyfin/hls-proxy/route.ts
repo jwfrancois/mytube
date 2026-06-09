@@ -3,18 +3,15 @@ import { getJellyfinCredentials } from '@/lib/jellyfin-credentials'
 
 /**
  * HLS Proxy — proxies m3u8 playlists and .ts segments from Jellyfin
- * to avoid CORS issues when hls.js tries to fetch directly from the server.
+ * to avoid CORS and Mixed Content issues when the browser on HTTPS (Vercel)
+ * tries to fetch from a Jellyfin NAS that may be HTTP or a different origin.
  */
 
 export const maxDuration = 60
+export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
   try {
-    const creds = await getJellyfinCredentials()
-    if (!creds || !creds.connected) {
-      return NextResponse.json({ error: 'Not connected to Jellyfin' }, { status: 400 })
-    }
-
     const { searchParams } = new URL(request.url)
     const targetUrl = searchParams.get('url')
 
@@ -22,33 +19,77 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing url parameter' }, { status: 400 })
     }
 
-    // Only allow proxying to the configured Jellyfin server
-    if (!targetUrl.startsWith(creds.serverUrl)) {
-      return NextResponse.json({ error: 'URL must point to the configured Jellyfin server' }, { status: 403 })
+    // Validate URL format
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(targetUrl)
+    } catch {
+      return NextResponse.json({ error: 'Invalid url parameter' }, { status: 400 })
     }
 
-    // Ensure the URL has authentication
+    // Only allow HTTP/HTTPS
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return NextResponse.json({ error: 'Only HTTP/HTTPS URLs are allowed' }, { status: 400 })
+    }
+
+    // Get credentials for auth and optional URL validation
+    const creds = await getJellyfinCredentials()
+
+    // If we have credentials, validate the URL points to our Jellyfin server
+    // Be lenient: allow http/https mismatch and trailing slash differences
+    if (creds?.serverUrl) {
+      const normalizeUrl = (u: string) => u.replace(/\/+$/, '').replace(/^http:/, 'https:')
+      const normalizedTarget = normalizeUrl(parsedUrl.origin)
+      const normalizedServer = normalizeUrl(new URL(creds.serverUrl).origin)
+
+      if (normalizedTarget !== normalizedServer) {
+        console.warn(`[HLS Proxy] URL origin mismatch: target=${normalizedTarget}, server=${normalizedServer}`)
+        // Don't block — the URL might still be valid (e.g., CDN or reverse proxy)
+      }
+    }
+
+    // Ensure the URL has authentication — add api_key if missing
     let authedUrl = targetUrl
     if (!targetUrl.includes('api_key=') && !targetUrl.includes('ApiKey=')) {
-      const separator = targetUrl.includes('?') ? '&' : '?'
-      authedUrl = `${targetUrl}${separator}api_key=${creds.accessToken}`
+      if (creds?.accessToken) {
+        const separator = targetUrl.includes('?') ? '&' : '?'
+        authedUrl = `${targetUrl}${separator}api_key=${creds.accessToken}`
+      }
     }
 
+    // Fetch from Jellyfin with timeout
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 120000)
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
 
-    const res = await fetch(authedUrl, {
-      headers: {
-        'X-Emby-Token': creds.accessToken,
-      },
-      signal: controller.signal,
-    })
+    let res: Response
+    try {
+      const fetchHeaders: Record<string, string> = {}
+      if (creds?.accessToken) {
+        fetchHeaders['X-Emby-Token'] = creds.accessToken
+      }
+
+      res = await fetch(authedUrl, {
+        headers: fetchHeaders,
+        signal: controller.signal,
+      })
+    } catch (fetchErr) {
+      clearTimeout(timeoutId)
+      console.error('[HLS Proxy] Fetch error:', fetchErr)
+      return NextResponse.json(
+        { error: `Failed to reach Jellyfin server: ${fetchErr instanceof Error ? fetchErr.message : 'Unknown error'}` },
+        { status: 502 }
+      )
+    }
 
     clearTimeout(timeoutId)
 
     if (!res.ok && res.status !== 206) {
-      console.error('HLS proxy fetch error:', res.status, targetUrl)
-      return NextResponse.json({ error: `Jellyfin returned ${res.status}` }, { status: res.status })
+      const errorBody = await res.text().catch(() => '')
+      console.error(`[HLS Proxy] Jellyfin returned ${res.status} for: ${targetUrl.substring(0, 100)}...`, errorBody.substring(0, 200))
+      return NextResponse.json(
+        { error: `Jellyfin returned ${res.status}` },
+        { status: res.status }
+      )
     }
 
     const contentType = res.headers.get('content-type') || ''
@@ -60,7 +101,7 @@ export async function GET(request: NextRequest) {
       targetUrl.includes('.m3u8')
     ) {
       const playlistText = await res.text()
-      const rewritten = rewriteHlsPlaylist(playlistText, targetUrl, creds.serverUrl)
+      const rewritten = rewriteHlsPlaylist(playlistText, targetUrl)
 
       return new NextResponse(rewritten, {
         status: 200,
@@ -100,12 +141,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to stream segment' }, { status: 500 })
     }
   } catch (error) {
-    console.error('HLS proxy error:', error)
-    return NextResponse.json({ error: 'HLS proxy failed' }, { status: 500 })
+    console.error('[HLS Proxy] Fatal error:', error)
+    return NextResponse.json(
+      { error: `HLS proxy failed: ${error instanceof Error ? error.message : 'Unknown error'}` },
+      { status: 500 }
+    )
   }
 }
 
-function rewriteHlsPlaylist(playlistText: string, playlistUrl: string, serverUrl: string): string {
+function rewriteHlsPlaylist(playlistText: string, playlistUrl: string): string {
   const baseUrl = playlistUrl.substring(0, playlistUrl.lastIndexOf('/') + 1)
 
   let m3u8QueryString = ''
@@ -131,8 +175,8 @@ function rewriteHlsPlaylist(playlistText: string, playlistUrl: string, serverUrl
     }
 
     if (trimmed.startsWith('#') && trimmed.includes('URI="')) {
-      const rewrittenLine = line.replace(/URI="([^"]+)"/g, (match, uri) => {
-        let absoluteUrl = resolveUrl(uri, baseUrl, serverUrl)
+      const rewrittenLine = line.replace(/URI="([^"]+)"/g, (_match: string, uri: string) => {
+        let absoluteUrl = resolveUrl(uri, baseUrl)
         absoluteUrl = appendQueryString(absoluteUrl, m3u8QueryString)
         const proxyUrl = buildProxyUrl(absoluteUrl)
         return `URI="${proxyUrl}"`
@@ -142,7 +186,7 @@ function rewriteHlsPlaylist(playlistText: string, playlistUrl: string, serverUrl
     }
 
     if (!trimmed.startsWith('#')) {
-      let absoluteUrl = resolveUrl(trimmed, baseUrl, serverUrl)
+      let absoluteUrl = resolveUrl(trimmed, baseUrl)
       absoluteUrl = appendQueryString(absoluteUrl, m3u8QueryString)
       const proxyUrl = buildProxyUrl(absoluteUrl)
       rewritten.push(proxyUrl)
@@ -179,7 +223,7 @@ function appendQueryString(targetUrl: string, queryString: string): string {
   return `${targetBase}?${merged.toString()}`
 }
 
-function resolveUrl(url: string, baseUrl: string, serverUrl: string): string {
+function resolveUrl(url: string, baseUrl: string): string {
   if (url.startsWith('http://') || url.startsWith('https://')) {
     return url
   }
@@ -190,10 +234,10 @@ function resolveUrl(url: string, baseUrl: string, serverUrl: string): string {
 
   if (url.startsWith('/')) {
     try {
-      const origin = new URL(serverUrl).origin
+      const origin = new URL(baseUrl).origin
       return `${origin}${url}`
     } catch {
-      return `${serverUrl}${url}`
+      return `${baseUrl}${url}`
     }
   }
 

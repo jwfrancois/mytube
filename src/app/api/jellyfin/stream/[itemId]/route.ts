@@ -65,6 +65,7 @@ export async function GET(
             const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`
             return NextResponse.json({
               url: proxyUrl,
+              directUrl: hlsUrl,
               format: 'hls',
               mediaSourceId: mediaSource.Id || mediaSourceId,
             })
@@ -89,6 +90,7 @@ export async function GET(
             const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`
             return NextResponse.json({
               url: proxyUrl,
+              directUrl: hlsUrl,
               format: 'hls',
               mediaSourceId: mediaSource.Id || mediaSourceId,
             })
@@ -120,6 +122,7 @@ export async function GET(
 
       return NextResponse.json({
         url: proxyUrl,
+        directUrl: hlsUrl,
         format: 'hls',
         mediaSourceId,
       })
@@ -314,6 +317,7 @@ export async function GET(
       const proxyUrl = `/api/jellyfin/hls-proxy?url=${encodeURIComponent(hlsUrl)}`
       return NextResponse.json({
         url: proxyUrl,
+        directUrl: hlsUrl,
         format: 'hls',
         mediaSourceId: msId || mediaSourceId,
       })
