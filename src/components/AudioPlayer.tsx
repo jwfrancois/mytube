@@ -826,9 +826,9 @@ export function AudioPlayer() {
             <Button
               variant="ghost"
               size="icon"
-              className={cn("h-10 w-10", repeatMode !== 'off' && `text-${accentColor}-500`)}
+              className={cn("h-10 w-10", repeatMode !== 'none' && `text-${accentColor}-500`)}
               onClick={() => setRepeatMode(
-                repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off'
+                repeatMode === 'none' ? 'all' : repeatMode === 'all' ? 'one' : 'none'
               )}
             >
               {repeatMode === 'one' ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
@@ -1111,9 +1111,9 @@ export function AudioPlayer() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className={cn("h-8 w-8", repeatMode !== 'off' && "text-purple-500")}
+                  className={cn("h-8 w-8", repeatMode !== 'none' && "text-purple-500")}
                   onClick={() => setRepeatMode(
-                    repeatMode === 'off' ? 'all' : repeatMode === 'all' ? 'one' : 'off'
+                    repeatMode === 'none' ? 'all' : repeatMode === 'all' ? 'one' : 'none'
                   )}
                 >
                   {repeatMode === 'one' ? <Repeat1 className="h-3.5 w-3.5" /> : <Repeat className="h-3.5 w-3.5" />}
