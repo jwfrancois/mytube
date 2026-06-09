@@ -19,7 +19,7 @@ export async function GET(
 ) {
   try {
     const { itemId, path } = await params
-    let server = null
+    let server: Awaited<ReturnType<typeof db.jellyfinServer.findFirst>> = null
     try {
       server = await db.jellyfinServer.findFirst()
     } catch (dbError) {

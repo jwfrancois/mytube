@@ -64,7 +64,7 @@ export async function GET(
       headers: { 'X-Emby-Token': server.accessToken },
     })
 
-    let personDetails = null
+    let personDetails: Record<string, unknown> | null = null
     if (personRes.ok) {
       const personData = (await personRes.json()) as Record<string, unknown>
       const personImageTags = personData.ImageTags as Record<string, string> | undefined

@@ -9,7 +9,7 @@ import { NextRequest, NextResponse } from 'next/server'
  */
 export async function GET() {
   try {
-    let server = null
+    let server: Awaited<ReturnType<typeof db.jellyfinServer.findFirst>> = null
     try {
       server = await db.jellyfinServer.findFirst()
     } catch (dbError) {
