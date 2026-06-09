@@ -70,7 +70,7 @@ async function searchWeb(
   query: string
 ): Promise<string> {
   try {
-    const results = await zai.functions.invoke('web_search', {
+    const results: any = await zai.functions.invoke('web_search', {
       query,
       num: 5,
     })

@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
     const typeLabel = type === 'TV_SHOW' ? 'TV show' : type === 'MUSIC' ? 'music album' : type.toLowerCase()
     const query = `movies like ${title} recommendations similar ${typeLabel}s`
 
-    const results = await zai.functions.invoke('web_search', {
+    const results: any = await zai.functions.invoke('web_search', {
       query,
       num: 8,
     })

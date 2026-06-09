@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
 
     try {
       const zai = await ZAI.create()
-      const results = await zai.functions.invoke('web_search', {
+      const results: any = await zai.functions.invoke('web_search', {
         query,
         num: 10,
       })
