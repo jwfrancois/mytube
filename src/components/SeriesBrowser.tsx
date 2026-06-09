@@ -718,7 +718,7 @@ export function SeriesBrowser({ series, onBack }: SeriesBrowserProps) {
       const seasons = data.seasons || []
       const mappedSeasons = seasons.map((s: MediaItem) => ({
         id: s.jellyfinId || s.id,
-        name: s.title || s.seasonName || `Season ${s.indexNumber || s.parentIndexNumber}`,
+        name: s.title || `Season ${s.indexNumber || s.parentIndexNumber}`,
         indexNumber: s.indexNumber || s.parentIndexNumber || 1,
         episodeCount: s.childCount || 0,
       }))
