@@ -335,16 +335,16 @@ export function SeriesDetail() {
                   {selectedSeries.communityRating.toFixed(1)}
                 </span>
               )}
-              {selectedSeries.childCount > 0 && (
+              {(selectedSeries.childCount ?? 0) > 0 && (
                 <span className="flex items-center gap-1">
                   {seriesType === 'TV_SHOW' ? (
-                    <>{selectedSeries.childCount} seasons</>
+                    <>{selectedSeries.childCount ?? 0} seasons</>
                   ) : seriesType === 'COLLECTION' ? (
-                    <>{selectedSeries.childCount} movies</>
+                    <>{selectedSeries.childCount ?? 0} movies</>
                   ) : seriesType === 'PODCAST' ? (
-                    <>{selectedSeries.childCount} episodes</>
+                    <>{selectedSeries.childCount ?? 0} episodes</>
                   ) : (
-                    <>{selectedSeries.childCount} items</>
+                    <>{selectedSeries.childCount ?? 0} items</>
                   )}
                 </span>
               )}
@@ -516,9 +516,9 @@ function SeasonCard({ item, onClick }: { item: any; onClick: () => void }) {
             </div>
           </div>
         </div>
-        {item.childCount > 0 && (
+        {(item.childCount ?? 0) > 0 && (
           <div className="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded">
-            {item.childCount} episodes
+            {item.childCount ?? 0} episodes
           </div>
         )}
       </div>
@@ -695,7 +695,7 @@ function ItemCard({ item, index, onClick, seriesType }: { item: any; index: numb
         )}
         {item.hasChildren && (
           <p className="text-xs text-emerald-500 mt-1">
-            {item.childCount} items →
+            {item.childCount ?? 0} items →
           </p>
         )}
       </div>
