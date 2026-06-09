@@ -133,6 +133,22 @@ interface AppState {
   repeatMode: 'none' | 'all' | 'one'
   setRepeatMode: (mode: 'none' | 'all' | 'one') => void
 
+  // Audio Player extended state (used by AudioPlayer component)
+  playQueue: MediaItem[]
+  queueIndex: number
+  shuffleMode: 'on' | 'off'
+  setShuffleMode: (mode: 'on' | 'off') => void
+  playQueueItem: (index: number) => void
+  eqPreset: string
+  setEqPreset: (preset: string) => void
+  bassBoost: number
+  setBassBoost: (val: number) => void
+  trebleBoost: number
+  setTrebleBoost: (val: number) => void
+  miniPlayerMode: boolean
+  setMiniPlayerMode: (mode: boolean) => void
+  setAudioElementRef: (el: HTMLAudioElement | HTMLVideoElement | null) => void
+
   // Knowledge Graph view
   showKnowledgeGraph: boolean
   setShowKnowledgeGraph: (show: boolean) => void
@@ -244,9 +260,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Audio Player Queue
   audioQueue: [],
   audioQueueIndex: -1,
-  setAudioQueue: (items) => set({ audioQueue: items, audioQueueIndex: items.length > 0 ? 0 : -1 }),
-  setAudioQueueIndex: (index) => set({ audioQueueIndex: index }),
-  addToAudioQueue: (item) => set((s) => ({ audioQueue: [...s.audioQueue, item] })),
+  setAudioQueue: (items) => set({ audioQueue: items, audioQueueIndex: items.length > 0 ? 0 : -1, playQueue: items, queueIndex: items.length > 0 ? 0 : -1 }),
+  setAudioQueueIndex: (index) => set({ audioQueueIndex: index, queueIndex: index }),
+  addToAudioQueue: (item) => set((s) => ({ audioQueue: [...s.audioQueue, item], playQueue: [...s.audioQueue, item] })),
   removeFromAudioQueue: (index) => set((s) => {
     const newQueue = [...s.audioQueue]
     newQueue.splice(index, 1)
@@ -256,15 +272,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     } else if (index === s.audioQueueIndex) {
       newIndex = Math.min(s.audioQueueIndex, newQueue.length - 1)
     }
-    return { audioQueue: newQueue, audioQueueIndex: newIndex }
+    return { audioQueue: newQueue, audioQueueIndex: newIndex, playQueue: newQueue, queueIndex: newIndex }
   }),
-  clearAudioQueue: () => set({ audioQueue: [], audioQueueIndex: -1 }),
+  clearAudioQueue: () => set({ audioQueue: [], audioQueueIndex: -1, playQueue: [], queueIndex: -1 }),
   playNext: () => set((s) => {
     if (s.audioQueue.length === 0) return { audioQueueIndex: -1 }
 
     if (s.repeatMode === 'one') {
       // Stay on the same track — caller is responsible for restarting playback
-      return { audioQueueIndex: s.audioQueueIndex }
+      return { audioQueueIndex: s.audioQueueIndex, queueIndex: s.audioQueueIndex }
     }
 
     let nextIndex = s.audioQueueIndex + 1
@@ -273,7 +289,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         nextIndex = 0
       } else {
         // End of queue, no repeat
-        return { audioQueueIndex: -1, isPlaying: false, audioTrack: null }
+        return { audioQueueIndex: -1, isPlaying: false, audioTrack: null, queueIndex: -1 }
       }
     }
 
@@ -291,13 +307,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     const isShowingAudioView = s.currentMedia && isAudioType(s.currentMedia.type)
     return {
       audioQueueIndex: nextIndex,
+      queueIndex: nextIndex,
       audioTrack: nextMedia,
       ...(isShowingAudioView ? { currentMedia: nextMedia } : {}),
       isPlaying: true,
     }
   }),
   playPrevious: () => set((s) => {
-    if (s.audioQueue.length === 0) return { audioQueueIndex: -1 }
+    if (s.audioQueue.length === 0) return { audioQueueIndex: -1, queueIndex: -1 }
 
     let prevIndex = s.audioQueueIndex - 1
     if (prevIndex < 0) {
@@ -312,6 +329,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const isShowingAudioView = s.currentMedia && isAudioType(s.currentMedia.type)
     return {
       audioQueueIndex: prevIndex,
+      queueIndex: prevIndex,
       audioTrack: prevMedia,
       ...(isShowingAudioView ? { currentMedia: prevMedia } : {}),
       isPlaying: true,
@@ -330,6 +348,33 @@ export const useAppStore = create<AppState>((set, get) => ({
   repeatMode: 'none',
   setRepeatMode: (mode) => set({ repeatMode: mode }),
 
+  // Audio Player extended state
+  playQueue: [],
+  queueIndex: -1,
+  shuffleMode: 'off',
+  setShuffleMode: (mode) => set({ shuffleMode: mode, shuffleEnabled: mode === 'on' }),
+  playQueueItem: (index) => {
+    const s = get()
+    if (index < 0 || index >= s.audioQueue.length) return
+    const media = s.audioQueue[index]
+    const isShowingAudioView = s.currentMedia && isAudioType(s.currentMedia.type)
+    set({
+      audioQueueIndex: index,
+      audioTrack: media,
+      ...(isShowingAudioView ? { currentMedia: media } : {}),
+      isPlaying: true,
+    })
+  },
+  eqPreset: 'flat',
+  setEqPreset: (preset) => set({ eqPreset: preset, equalizerPreset: preset }),
+  bassBoost: 0,
+  setBassBoost: (val) => set({ bassBoost: val }),
+  trebleBoost: 0,
+  setTrebleBoost: (val) => set({ trebleBoost: val }),
+  miniPlayerMode: false,
+  setMiniPlayerMode: (mode) => set({ miniPlayerMode: mode }),
+  setAudioElementRef: (el) => set({ audioElement: el as HTMLAudioElement | null }),
+
   // Persistent Audio Track
   audioTrack: null,
   setAudioTrack: (track) => set({ audioTrack: track }),
@@ -346,6 +391,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     isPlaying: false,
     audioQueue: [],
     audioQueueIndex: -1,
+    playQueue: [],
+    queueIndex: -1,
   }),
 
   // Knowledge Graph
