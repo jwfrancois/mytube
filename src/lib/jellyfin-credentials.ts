@@ -29,6 +29,18 @@ interface JellyfinCreds {
   username: string
   connected: boolean
   serverId: string
+  name?: string
+}
+
+/**
+ * Lightweight credentials type passed from the client side
+ * (e.g. via query params) to seed the in-memory credential cache
+ * on Vercel serverless where state is lost on cold start.
+ */
+export interface ClientCredentials {
+  serverUrl: string
+  userId: string
+  accessToken: string
 }
 
 // In-memory cache for validated credentials (survives within a single serverless invocation)
@@ -260,6 +272,25 @@ async function saveCredentialsToDb(creds: JellyfinCreds): Promise<void> {
 export function invalidateCredentialCache(): void {
   validatedCreds = null
   validatedAt = 0
+}
+
+/**
+ * Seed the in-memory credential cache from client-supplied credentials.
+ * This is critical for Vercel serverless where in-memory state is lost on
+ * every cold start — the client passes credentials via query params, and
+ * this function makes them available to getJellyfinCredentials() without
+ * needing a DB lookup or re-auth.
+ */
+export function setCredentialsFromClient(credentials: ClientCredentials): void {
+  validatedCreds = {
+    serverUrl: credentials.serverUrl,
+    userId: credentials.userId,
+    accessToken: credentials.accessToken,
+    username: 'user',
+    connected: true,
+    serverId: '',
+  }
+  validatedAt = Date.now()
 }
 
 /**
